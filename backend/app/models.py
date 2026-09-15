@@ -97,3 +97,17 @@ class DocumentBatch(BaseModel):
 class BatchIndexResponse(BaseModel):
     added: int
     skipped: int
+
+
+class IndexEvent(BaseModel):
+    event_id: str
+    document: DocumentIn
+    attempt: int = Field(default=0, ge=0)
+    created_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
+    last_error: str | None = None
+
+
+class QueuedIndexResponse(BaseModel):
+    event_id: str
+    status: Literal["queued"] = "queued"
+    topic: str

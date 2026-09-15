@@ -14,6 +14,7 @@ from fastapi.staticfiles import StaticFiles
 from .cluster import ClusterService, cluster_service
 from .config import settings
 from .persistence import document_store
+from .queueing import index_queue
 from .models import (
     AskRequest,
     AskResponse,
@@ -23,6 +24,7 @@ from .models import (
     Document,
     DocumentBatch,
     DocumentIn,
+    QueuedIndexResponse,
     SearchResponse,
     StatsResponse,
 )
@@ -65,7 +67,10 @@ async def lifespan(_app: FastAPI):
             index_service.add_many(selected)
         else:
             index_service.load_seed_file(seed)
-    yield
+    try:
+        yield
+    finally:
+        await index_queue.close()
 
 
 app = FastAPI(
@@ -133,6 +138,21 @@ def require_cluster(x_cluster_token: str | None = Header(default=None)) -> None:
 @app.post("/api/index/document", response_model=Document, dependencies=[Depends(require_admin)])
 async def add_document(item: DocumentIn) -> Document:
     return await cluster_service.add_document(item)
+
+
+@app.post(
+    "/api/index/async",
+    response_model=QueuedIndexResponse,
+    status_code=202,
+    dependencies=[Depends(require_admin)],
+)
+async def queue_document(item: DocumentIn) -> QueuedIndexResponse:
+    if not index_queue.enabled:
+        raise HTTPException(status_code=503, detail="Asynchronous indexing queue is not configured")
+    try:
+        return await index_queue.enqueue_document(item)
+    except Exception as exc:
+        raise HTTPException(status_code=503, detail="Indexing queue unavailable") from exc
 
 
 @app.post("/api/crawl", response_model=CrawlResponse, dependencies=[Depends(require_admin)])

@@ -5,3 +5,4 @@ beautifulsoup4==4.14.3
 numpy==2.3.5
 pydantic==2.12.5
 psycopg[binary]==3.2.13
+aiokafka==0.12.0

@@ -26,5 +26,15 @@ class Settings:
     cluster_token: str = os.getenv("CLUSTER_TOKEN", "")
     shard_timeout_seconds: float = float(os.getenv("SHARD_TIMEOUT_SECONDS", "5"))
 
+    # Phase 3b: asynchronous indexing through Kafka / Redpanda.
+    kafka_bootstrap_servers: str = os.getenv("KAFKA_BOOTSTRAP_SERVERS", "")
+    kafka_index_topic: str = os.getenv("KAFKA_INDEX_TOPIC", "nexus-index")
+    kafka_dlq_topic: str = os.getenv("KAFKA_DLQ_TOPIC", "nexus-index-dlq")
+    kafka_consumer_group: str = os.getenv("KAFKA_CONSUMER_GROUP", "nexus-indexers")
+    kafka_client_id: str = os.getenv("KAFKA_CLIENT_ID", "nexus-search")
+    index_retry_max: int = int(os.getenv("INDEX_RETRY_MAX", "5"))
+    index_retry_base_seconds: float = float(os.getenv("INDEX_RETRY_BASE_SECONDS", "0.5"))
+    index_retry_max_seconds: float = float(os.getenv("INDEX_RETRY_MAX_SECONDS", "10"))
+
 
 settings = Settings()
