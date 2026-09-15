@@ -30,6 +30,8 @@ flowchart LR
 
 ## What is implemented
 
+- **Durable shard recovery (v3)** — optional PostgreSQL source-of-truth per shard; on restart each shard restores only its owned documents and deterministically rebuilds BM25/semantic indexes before serving queries. Writes are idempotent on `(shard_id, content_hash)`.
+
 - **BM25 from scratch** — tokenizer, posting lists, document frequency/IDF, length normalization and ranked retrieval.
 - **Semantic retrieval** — OpenAI embeddings when configured; local TF-IDF + NumPy SVD latent-semantic fallback otherwise.
 - **Hybrid retrieval** — RRF combines lexical and semantic rankings without mixing incompatible raw score scales.
@@ -80,6 +82,14 @@ SHARD_ID=0
 SHARD_COUNT=3
 CLUSTER_TOKEN=<shared-secret>
 ```
+
+Optional durable shard storage:
+
+```text
+DATABASE_URL=postgresql://user:password@host:5432/nexus
+```
+
+When `DATABASE_URL` is configured, shard document metadata/text survives container replacement and each shard reconstructs its local search structures from PostgreSQL at startup. Without it, Nexus keeps the original dependency-light in-memory behavior for local development and tests.
 
 At startup each shard deterministically loads only the seed documents it owns. New documents are routed by the coordinator using the same rendezvous-hash function.
 

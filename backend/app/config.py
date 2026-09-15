@@ -16,6 +16,7 @@ class Settings:
     semantic_provider: str = os.getenv("SEMANTIC_PROVIDER", "auto")
     cors_origins: str = os.getenv("CORS_ORIGINS", "*")
     crawl_user_agent: str = os.getenv("CRAWL_USER_AGENT", "NexusSearchBot/1.0")
+    database_url: str = os.getenv("DATABASE_URL", "")
 
     # Distributed-search configuration. `standalone` preserves the single-node dev mode.
     service_role: str = os.getenv("SERVICE_ROLE", "standalone").lower()

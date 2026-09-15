@@ -13,6 +13,7 @@ from fastapi.staticfiles import StaticFiles
 
 from .cluster import ClusterService, cluster_service
 from .config import settings
+from .persistence import document_store
 from .models import (
     AskRequest,
     AskResponse,
@@ -31,7 +32,26 @@ from .services import answer_service, crawler, index_service
 @asynccontextmanager
 async def lifespan(_app: FastAPI):
     seed = Path(__file__).resolve().parent / "data" / "seed_documents.json"
-    if not index_service.documents and seed.exists():
+
+    # Shards use PostgreSQL as durable source-of-truth when DATABASE_URL exists.
+    # The search structures remain local/in-memory and are rebuilt after restore.
+    if settings.service_role == "shard" and document_store.enabled:
+        document_store.initialize()
+        restored = document_store.load_shard(settings.shard_id)
+        if restored:
+            index_service.restore_documents(restored)
+        elif seed.exists():
+            data = json.loads(seed.read_text(encoding="utf-8"))
+            items = [DocumentIn(**item) for item in data]
+            selected = [
+                item for item in items
+                if ClusterService.seed_belongs_here(item, settings.shard_id, settings.shard_count)
+            ]
+            before = set(index_service.documents)
+            index_service.add_many(selected)
+            created = [doc for doc_id, doc in index_service.documents.items() if doc_id not in before]
+            document_store.upsert_many(settings.shard_id, created)
+    elif not index_service.documents and seed.exists():
         if settings.service_role == "coordinator":
             # Coordinator owns routing; shards own the actual indexes.
             pass
@@ -144,13 +164,19 @@ def internal_stats() -> StatsResponse:
 
 @app.post("/internal/index/document", response_model=Document, dependencies=[Depends(require_cluster)])
 def internal_add_document(item: DocumentIn) -> Document:
-    doc, _created = index_service.add_document(item)
+    doc, created = index_service.add_document(item)
+    if created and settings.service_role == "shard" and document_store.enabled:
+        document_store.upsert(settings.shard_id, doc)
     return doc
 
 
 @app.post("/internal/index/batch", response_model=BatchIndexResponse, dependencies=[Depends(require_cluster)])
 def internal_add_batch(batch: DocumentBatch) -> BatchIndexResponse:
+    before = set(index_service.documents)
     added, skipped = index_service.add_many(batch.documents)
+    if added and settings.service_role == "shard" and document_store.enabled:
+        created = [doc for doc_id, doc in index_service.documents.items() if doc_id not in before]
+        document_store.upsert_many(settings.shard_id, created)
     return BatchIndexResponse(added=added, skipped=skipped)
 
 

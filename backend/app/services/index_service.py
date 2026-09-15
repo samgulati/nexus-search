@@ -61,6 +61,15 @@ class IndexService:
                 self.rebuild()
         return added, skipped
 
+
+    def restore_documents(self, docs: list[Document]) -> int:
+        """Replace the in-memory corpus from durable storage and rebuild indexes once."""
+        with self._lock:
+            self.documents = {doc.id: doc for doc in docs}
+            self.content_hashes = {doc.content_hash for doc in docs}
+            self.rebuild()
+        return len(docs)
+
     def rebuild(self) -> None:
         combined = {
             doc_id: f"{doc.title}\n{doc.text}"
