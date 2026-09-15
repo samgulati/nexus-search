@@ -14,6 +14,28 @@ jobs:
       - run: pip install -r backend/requirements-dev.txt
       - run: PYTHONPATH=backend pytest -q backend/tests
 
+  kafka-integration:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - run: pip install -r backend/requirements-dev.txt
+      - name: Start Redpanda
+        run: |
+          docker run -d --name redpanda             -p 19092:19092             docker.redpanda.com/redpandadata/redpanda:v26.2.2             redpanda start               --kafka-addr 0.0.0.0:19092               --advertise-kafka-addr 127.0.0.1:19092               --rpc-addr 0.0.0.0:33145               --advertise-rpc-addr 127.0.0.1:33145               --mode dev-container               --smp 1
+          for i in $(seq 1 60); do
+            if docker exec redpanda rpk cluster info -X brokers=127.0.0.1:19092 >/dev/null 2>&1; then
+              exit 0
+            fi
+            sleep 1
+          done
+          docker logs redpanda
+          exit 1
+      - name: Run Kafka end-to-end indexing test
+        run: PYTHONPATH=backend python scripts/kafka_e2e.py
+
   frontend-build:
     runs-on: ubuntu-latest
     steps:
