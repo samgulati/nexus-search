@@ -12,6 +12,7 @@ import httpx
 from .config import settings
 from .models import Document, DocumentIn, SearchResponse, SearchResult, StatsResponse
 from .services.index_service import index_service
+from .search.tokenize import tokenize
 
 
 class RendezvousHash:
@@ -108,7 +109,7 @@ class ClusterService:
             shard_responses = await asyncio.gather(*tasks)
 
         available = [response for response in shard_responses if response is not None]
-        merged = self.merge_ranked(available, top_k=top_k)
+        merged = self.merge_ranked(available, top_k=top_k, query=query)
         took_ms = (time.perf_counter() - t0) * 1000
         self.searches += 1
         self.search_latencies.append(took_ms)
@@ -143,8 +144,35 @@ class ClusterService:
             return None
 
     @staticmethod
-    def merge_ranked(responses: list[SearchResponse], top_k: int, rrf_k: int = 60) -> list[SearchResult]:
-        """Merge independently-ranked shard results without comparing raw shard-local scores."""
+    def _title_overlap(query: str, title: str) -> float:
+        """Return query-token coverage in a title for deterministic RRF tie-breaking.
+
+        Cross-shard BM25/LSA raw scores are not guaranteed to be calibrated to the
+        same scale, so the coordinator keeps shard rank as the primary signal.
+        Title overlap is used only when two candidates have the same global RRF
+        score (a common case for rank-1 results from different shards).
+        """
+        query_terms = set(tokenize(query))
+        if not query_terms:
+            return 0.0
+        title_terms = set(tokenize(title))
+        return len(query_terms & title_terms) / len(query_terms)
+
+    @staticmethod
+    def merge_ranked(
+        responses: list[SearchResponse],
+        top_k: int,
+        query: str = "",
+        rrf_k: int = 60,
+    ) -> list[SearchResult]:
+        """Merge independently-ranked shard results with rank-first semantics.
+
+        RRF remains the primary cross-shard signal because shard-local BM25 and
+        local-LSA scores are not globally calibrated. Equal RRF scores are broken
+        deterministically by query/title coverage, then local lexical/semantic
+        scores. This prevents the first shard in the fan-out list from winning
+        every rank tie while avoiding raw-score comparison as the primary merge.
+        """
         fused: dict[str, float] = {}
         by_id: dict[str, SearchResult] = {}
         for response in responses:
@@ -152,7 +180,18 @@ class ClusterService:
                 fused[result.id] = fused.get(result.id, 0.0) + 1.0 / (rrf_k + rank)
                 by_id[result.id] = result
 
-        ordered = sorted(fused.items(), key=lambda item: item[1], reverse=True)[:top_k]
+        def sort_key(item: tuple[str, float]) -> tuple[float, float, float, float, str]:
+            doc_id, rrf_score = item
+            result = by_id[doc_id]
+            return (
+                rrf_score,
+                ClusterService._title_overlap(query, result.title),
+                result.bm25_score,
+                result.semantic_score,
+                doc_id,
+            )
+
+        ordered = sorted(fused.items(), key=sort_key, reverse=True)[:top_k]
         merged: list[SearchResult] = []
         for doc_id, score in ordered:
             original = by_id[doc_id]

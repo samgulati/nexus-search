@@ -1,6 +1,6 @@
 # Nexus — Distributed AI Search Engine
 
-Nexus is a from-first-principles search engine that combines a **custom BM25 inverted index**, **semantic retrieval**, **reciprocal-rank fusion**, an asynchronous web crawler, and a **citation-grounded answer layer**. Version 2 adds a real coordinator/shard architecture: queries fan out across independently deployed search shards and global top-k results are merged at the coordinator.
+Nexus is a from-first-principles search engine that combines a **custom BM25 inverted index**, **semantic retrieval**, **reciprocal-rank fusion**, an asynchronous web crawler, and a **citation-grounded answer layer**. Version 2 adds a real coordinator/shard architecture: queries fan out across independently deployed search shards and global top-k results are merged at the coordinator. The public deployment runs one coordinator plus three private Railway shards.
 
 ## Architecture
 
@@ -33,7 +33,7 @@ flowchart LR
 - **BM25 from scratch** — tokenizer, posting lists, document frequency/IDF, length normalization and ranked retrieval.
 - **Semantic retrieval** — OpenAI embeddings when configured; local TF-IDF + NumPy SVD latent-semantic fallback otherwise.
 - **Hybrid retrieval** — RRF combines lexical and semantic rankings without mixing incompatible raw score scales.
-- **Distributed query fan-out** — a coordinator concurrently queries multiple independent shard services and performs a second global rank-fusion pass.
+- **Distributed query fan-out** — a coordinator concurrently queries multiple independent shard services and performs a second global rank-fusion pass with deterministic relevance tie-breaking.
 - **Deterministic sharding** — highest-random-weight / rendezvous hashing assigns each document to exactly one shard and minimizes movement when the node set changes.
 - **Distributed indexing path** — coordinator routes manual/crawled documents to their owning shard; shard-internal endpoints are protected by a cluster token.
 - **Failure-aware search** — coordinator merges responses from available shards instead of failing the entire query when one shard is unavailable.
@@ -106,9 +106,15 @@ pip install -r backend/requirements-dev.txt
 PYTHONPATH=backend pytest -q backend/tests
 ```
 
-Current test suite: **12 passing tests**.
+Current test suite: **13 passing tests**.
 
-## Benchmarks
+## Live deployment
+
+Public coordinator/UI: **https://nexus-search-production.up.railway.app**
+
+The coordinator is the only public service. Three shard services communicate over Railway private networking and expose token-protected `/internal/*` APIs to the coordinator. The 20-document demo corpus is deterministically partitioned by rendezvous hashing across the three shards.
+
+## Benchmarks and failure validation
 
 Single-node algorithm benchmark:
 
@@ -118,13 +124,17 @@ python scripts/benchmark.py
 
 The checked-in synthetic run indexed 1,200 generated documents and measured **0.433 ms p95 in-process hybrid retrieval** across 120 queries. This is intentionally an algorithm-level benchmark, not an internet-scale production claim.
 
-After bringing up the distributed cluster, measure end-to-end coordinator latency with:
+A separate live distributed smoke/load test was run against the three-shard Railway deployment using the 20-document demo corpus: **200/200 requests succeeded** at concurrency 20, sustaining **81.15 req/s**, with **237.5 ms p50 / 326.8 ms p95 / 362.0 ms p99 client-observed HTTP latency**. Server-reported query execution measured **92.8 ms p50 / 171.3 ms p95 / 199.7 ms p99** in that run. These figures include a tiny corpus and should be treated as deployment validation, not a scale claim.
+
+Failure injection was also verified by replacing one shard target with an unreachable private address. The coordinator reported **2/3 healthy shards**, continued returning **HTTP 200 partial search results**, and recovered to **3/3 healthy shards** after restoring the target.
+
+Re-run the distributed benchmark with:
 
 ```bash
-python scripts/cluster_benchmark.py --base-url http://localhost:8000
+python scripts/cluster_benchmark.py --base-url https://nexus-search-production.up.railway.app
 ```
 
-Production/network numbers should only be added to the resume after running that benchmark against the deployed cluster.
+See [`BENCHMARK.md`](BENCHMARK.md) for scopes and caveats.
 
 ## Next engineering milestones
 

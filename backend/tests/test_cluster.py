@@ -52,7 +52,27 @@ def test_cluster_merge_uses_rank_not_incomparable_raw_scores():
         query="distributed systems", mode="hybrid", took_ms=1.0, total=2,
         results=[result("c", "C", "1"), result("d", "D", "1")],
     )
-    merged = ClusterService.merge_ranked([shard_0, shard_1], top_k=4)
+    merged = ClusterService.merge_ranked([shard_0, shard_1], top_k=4, query="distributed systems")
     assert {r.id for r in merged} == {"a", "b", "c", "d"}
     assert merged[0].score == merged[1].score
     assert merged[0].score > merged[2].score
+
+
+def test_cluster_merge_breaks_rank_ties_by_query_title_relevance():
+    shard_0 = SearchResponse(
+        query="idempotency in distributed systems", mode="hybrid", took_ms=1.0, total=1,
+        results=[result("kafka", "Apache Kafka Distributed Event Streaming", "0")],
+    )
+    shard_1 = SearchResponse(
+        query="idempotency in distributed systems", mode="hybrid", took_ms=1.0, total=1,
+        results=[result("idem", "Idempotency in Distributed Systems", "1")],
+    )
+
+    merged = ClusterService.merge_ranked(
+        [shard_0, shard_1],
+        top_k=2,
+        query="idempotency in distributed systems",
+    )
+
+    assert merged[0].id == "idem"
+    assert merged[0].score == merged[1].score  # RRF still remains the primary signal.
