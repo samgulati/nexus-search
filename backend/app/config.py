@@ -36,5 +36,12 @@ class Settings:
     index_retry_base_seconds: float = float(os.getenv("INDEX_RETRY_BASE_SECONDS", "0.5"))
     index_retry_max_seconds: float = float(os.getenv("INDEX_RETRY_MAX_SECONDS", "10"))
 
+    # Phase 4: observability.
+    metrics_enabled: bool = os.getenv("METRICS_ENABLED", "false").lower() in {"1", "true", "yes"}
+    metrics_port: int = int(os.getenv("METRICS_PORT", "0"))
+    otel_exporter_otlp_endpoint: str = os.getenv("OTEL_EXPORTER_OTLP_ENDPOINT", "")
+    otel_exporter_otlp_traces_endpoint: str = os.getenv("OTEL_EXPORTER_OTLP_TRACES_ENDPOINT", "")
+    otel_service_name: str = os.getenv("OTEL_SERVICE_NAME", "")
+
 
 settings = Settings()

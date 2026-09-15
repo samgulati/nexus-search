@@ -11,6 +11,7 @@ import httpx
 
 from .config import settings
 from .models import Document, DocumentIn, SearchResponse, SearchResult, StatsResponse
+from .observability import inject_trace_headers, observe_shard_call, tracer
 from .services.index_service import index_service
 from .search.tokenize import tokenize
 
@@ -85,7 +86,8 @@ class ClusterService:
         return ring.pick(ClusterService.key_for_document(item)) == str(shard_id)
 
     def _cluster_headers(self) -> dict[str, str]:
-        return {"X-Cluster-Token": settings.cluster_token} if settings.cluster_token else {}
+        headers = {"X-Cluster-Token": settings.cluster_token} if settings.cluster_token else {}
+        return inject_trace_headers(headers)
 
     async def search(self, query: str, mode: str = "hybrid", top_k: int = 10) -> SearchResponse:
         if not self.is_coordinator:
@@ -129,19 +131,35 @@ class ClusterService:
         mode: str,
         top_k: int,
     ) -> SearchResponse | None:
-        try:
-            response = await client.get(
-                f"{target.url}/internal/search",
-                params={"q": query, "mode": mode, "top_k": top_k},
-                headers=self._cluster_headers(),
-            )
-            response.raise_for_status()
-            parsed = SearchResponse.model_validate(response.json())
-            for result in parsed.results:
-                result.shard_id = target.shard_id
-            return parsed
-        except Exception:
-            return None
+        started = time.perf_counter()
+        with tracer().start_as_current_span("nexus.shard.search") as span:
+            span.set_attribute("nexus.shard_id", target.shard_id)
+            try:
+                response = await client.get(
+                    f"{target.url}/internal/search",
+                    params={"q": query, "mode": mode, "top_k": top_k},
+                    headers=self._cluster_headers(),
+                )
+                response.raise_for_status()
+                parsed = SearchResponse.model_validate(response.json())
+                for result in parsed.results:
+                    result.shard_id = target.shard_id
+                observe_shard_call(
+                    "search",
+                    target.shard_id,
+                    "success",
+                    time.perf_counter() - started,
+                )
+                return parsed
+            except Exception as exc:
+                span.record_exception(exc)
+                observe_shard_call(
+                    "search",
+                    target.shard_id,
+                    "error",
+                    time.perf_counter() - started,
+                )
+                return None
 
     @staticmethod
     def _title_overlap(query: str, title: str) -> float:

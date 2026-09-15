@@ -2,13 +2,25 @@ from __future__ import annotations
 
 import asyncio
 import logging
+import time
 
 import httpx
 from aiokafka import AIOKafkaConsumer, AIOKafkaProducer
+from aiokafka.structs import TopicPartition
 
 from .cluster import ClusterService, RendezvousHash, ShardTarget
 from .config import settings
 from .models import IndexEvent
+from .observability import (
+    INDEX_EVENTS,
+    INDEX_PROCESSING,
+    KAFKA_LAG,
+    extract_kafka_context,
+    inject_trace_headers,
+    kafka_trace_headers,
+    start_worker_metrics_server,
+    tracer,
+)
 
 logging.basicConfig(
     level=logging.INFO,
@@ -43,6 +55,7 @@ async def publish_event(
         topic,
         key=event.event_id.encode("utf-8"),
         value=event.model_dump_json().encode("utf-8"),
+        headers=kafka_trace_headers(),
     )
 
 
@@ -54,7 +67,7 @@ async def route_to_shard(
     ring = RendezvousHash(t.shard_id for t in targets)
     shard_id = ring.pick(ClusterService.key_for_document(event.document))
     target = next(t for t in targets if t.shard_id == shard_id)
-    headers = {"X-Cluster-Token": settings.cluster_token}
+    headers = inject_trace_headers({"X-Cluster-Token": settings.cluster_token})
 
     response = await client.post(
         f"{target.url}/internal/index/document",
@@ -94,6 +107,7 @@ async def run() -> None:
 
     await consumer.start()
     await producer.start()
+    start_worker_metrics_server()
     logger.info(
         "index worker started topic=%s group=%s shards=%s",
         settings.kafka_index_topic,
@@ -104,57 +118,86 @@ async def run() -> None:
     try:
         async with httpx.AsyncClient(timeout=max(settings.shard_timeout_seconds, 10.0)) as client:
             async for message in consumer:
-                try:
-                    event = IndexEvent.model_validate_json(message.value)
-                except Exception:
-                    logger.exception(
-                        "invalid index event partition=%s offset=%s; sending raw payload to DLQ",
-                        message.partition,
-                        message.offset,
+                processing_started = time.perf_counter()
+                topic_partition = TopicPartition(message.topic, message.partition)
+                highwater = consumer.highwater(topic_partition)
+                if highwater is not None:
+                    KAFKA_LAG.labels(message.topic, str(message.partition)).set(
+                        max(0, highwater - message.offset - 1)
                     )
-                    await producer.send_and_wait(
-                        settings.kafka_dlq_topic,
-                        key=message.key,
-                        value=message.value,
-                    )
-                    await consumer.commit()
-                    continue
 
-                try:
-                    shard_id = await route_to_shard(client, event, targets)
-                    await consumer.commit()
-                    logger.info(
-                        "indexed event=%s shard=%s attempt=%s",
-                        event.event_id,
-                        shard_id,
-                        event.attempt,
-                    )
-                except Exception as exc:
-                    next_attempt = event.attempt + 1
-                    updated = event.model_copy(
-                        update={
-                            "attempt": next_attempt,
-                            "last_error": str(exc)[:500],
-                        }
-                    )
-                    if next_attempt <= settings.index_retry_max:
-                        delay = retry_delay(next_attempt)
-                        logger.warning(
-                            "indexing failed event=%s attempt=%s retry_in=%.2fs",
-                            event.event_id,
-                            next_attempt,
-                            delay,
+                parent = extract_kafka_context(message.headers)
+                with tracer().start_as_current_span(
+                    "nexus.kafka.consume",
+                    context=parent,
+                ) as span:
+                    span.set_attribute("messaging.system", "kafka")
+                    span.set_attribute("messaging.destination.name", message.topic)
+                    span.set_attribute("messaging.kafka.partition", message.partition)
+                    span.set_attribute("messaging.kafka.offset", message.offset)
+
+                    try:
+                        event = IndexEvent.model_validate_json(message.value)
+                        span.set_attribute("nexus.event_id", event.event_id)
+                    except Exception:
+                        INDEX_EVENTS.labels("invalid").inc()
+                        logger.exception(
+                            "invalid index event partition=%s offset=%s; sending raw payload to DLQ",
+                            message.partition,
+                            message.offset,
                         )
-                        await asyncio.sleep(delay)
-                        await publish_event(producer, settings.kafka_index_topic, updated)
-                    else:
-                        logger.error(
-                            "indexing exhausted retries event=%s; sending to DLQ",
-                            event.event_id,
+                        await producer.send_and_wait(
+                            settings.kafka_dlq_topic,
+                            key=message.key,
+                            value=message.value,
+                            headers=kafka_trace_headers(),
                         )
-                        await publish_event(producer, settings.kafka_dlq_topic, updated)
-                    # Commit only after the retry/DLQ write is acknowledged.
-                    await consumer.commit()
+                        INDEX_EVENTS.labels("dlq").inc()
+                        await consumer.commit()
+                        INDEX_PROCESSING.observe(time.perf_counter() - processing_started)
+                        continue
+
+                    try:
+                        shard_id = await route_to_shard(client, event, targets)
+                        span.set_attribute("nexus.shard_id", shard_id)
+                        await consumer.commit()
+                        INDEX_EVENTS.labels("indexed").inc()
+                        logger.info(
+                            "indexed event=%s shard=%s attempt=%s",
+                            event.event_id,
+                            shard_id,
+                            event.attempt,
+                        )
+                    except Exception as exc:
+                        span.record_exception(exc)
+                        next_attempt = event.attempt + 1
+                        updated = event.model_copy(
+                            update={
+                                "attempt": next_attempt,
+                                "last_error": str(exc)[:500],
+                            }
+                        )
+                        if next_attempt <= settings.index_retry_max:
+                            INDEX_EVENTS.labels("retry").inc()
+                            delay = retry_delay(next_attempt)
+                            logger.warning(
+                                "indexing failed event=%s attempt=%s retry_in=%.2fs",
+                                event.event_id,
+                                next_attempt,
+                                delay,
+                            )
+                            await asyncio.sleep(delay)
+                            await publish_event(producer, settings.kafka_index_topic, updated)
+                        else:
+                            INDEX_EVENTS.labels("dlq").inc()
+                            logger.error(
+                                "indexing exhausted retries event=%s; sending to DLQ",
+                                event.event_id,
+                            )
+                            await publish_event(producer, settings.kafka_dlq_topic, updated)
+                        await consumer.commit()
+                    finally:
+                        INDEX_PROCESSING.observe(time.perf_counter() - processing_started)
     finally:
         await consumer.stop()
         await producer.stop()

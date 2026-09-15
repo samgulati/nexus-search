@@ -6,13 +6,15 @@ from contextlib import asynccontextmanager
 from pathlib import Path
 from typing import Literal
 
-from fastapi import Depends, FastAPI, Header, HTTPException, Query
+from fastapi import Depends, FastAPI, Header, HTTPException, Query, Request
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import FileResponse
+from fastapi.responses import FileResponse, Response
 from fastapi.staticfiles import StaticFiles
+from opentelemetry.trace import SpanKind, Status, StatusCode
 
 from .cluster import ClusterService, cluster_service
 from .config import settings
+from .observability import extract_http_context, observe_http, render_metrics, trace_id_hex, tracer
 from .persistence import document_store
 from .queueing import index_queue
 from .models import (
@@ -88,6 +90,58 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+
+@app.middleware("http")
+async def observability_middleware(request: Request, call_next):
+    import time
+
+    started = time.perf_counter()
+    path = request.url.path
+    status_code = 500
+    parent = extract_http_context(request.headers)
+
+    with tracer().start_as_current_span(
+        f"{request.method} {path}",
+        context=parent,
+        kind=SpanKind.SERVER,
+    ) as span:
+        span.set_attribute("http.request.method", request.method)
+        span.set_attribute("url.path", path)
+        span.set_attribute("nexus.role", settings.service_role)
+        if settings.service_role == "shard":
+            span.set_attribute("nexus.shard_id", settings.shard_id)
+
+        try:
+            response = await call_next(request)
+            status_code = response.status_code
+            span.set_attribute("http.response.status_code", status_code)
+            if status_code >= 500:
+                span.set_status(Status(StatusCode.ERROR))
+
+            current_trace_id = trace_id_hex()
+            if current_trace_id:
+                response.headers["X-Trace-ID"] = current_trace_id
+            return response
+        except Exception as exc:
+            span.record_exception(exc)
+            span.set_status(Status(StatusCode.ERROR))
+            raise
+        finally:
+            observe_http(
+                request.method,
+                path,
+                status_code,
+                time.perf_counter() - started,
+            )
+
+
+@app.get("/metrics", include_in_schema=False)
+def metrics() -> Response:
+    if not settings.metrics_enabled:
+        raise HTTPException(status_code=404, detail="Metrics are disabled")
+    payload, content_type = render_metrics()
+    return Response(content=payload, headers={"Content-Type": content_type})
 
 
 @app.get("/api/health")

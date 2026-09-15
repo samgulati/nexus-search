@@ -7,6 +7,7 @@ from aiokafka import AIOKafkaProducer
 
 from .config import settings
 from .models import DocumentIn, IndexEvent, QueuedIndexResponse
+from .observability import INDEX_EVENTS, kafka_trace_headers, tracer
 
 
 def event_id_for_document(item: DocumentIn) -> str:
@@ -58,11 +59,17 @@ class KafkaIndexQueue:
             event_id=event_id_for_document(item),
             document=item,
         )
-        await producer.send_and_wait(
-            settings.kafka_index_topic,
-            value=event.model_dump_json().encode("utf-8"),
-            key=event.event_id.encode("utf-8"),
-        )
+        with tracer().start_as_current_span("nexus.kafka.produce") as span:
+            span.set_attribute("messaging.system", "kafka")
+            span.set_attribute("messaging.destination.name", settings.kafka_index_topic)
+            span.set_attribute("nexus.event_id", event.event_id)
+            await producer.send_and_wait(
+                settings.kafka_index_topic,
+                value=event.model_dump_json().encode("utf-8"),
+                key=event.event_id.encode("utf-8"),
+                headers=kafka_trace_headers(),
+            )
+            INDEX_EVENTS.labels("queued").inc()
         return QueuedIndexResponse(
             event_id=event.event_id,
             topic=settings.kafka_index_topic,
