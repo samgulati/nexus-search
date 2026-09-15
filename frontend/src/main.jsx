@@ -107,7 +107,7 @@ function App() {
           <Metric icon={<Database size={17}/>} label="Indexed documents" value={stats?.documents ?? '—'} />
           <Metric icon={<Braces size={17}/>} label="Vocabulary" value={stats ? stats.vocabulary_terms.toLocaleString() : '—'} />
           <Metric icon={<Timer size={17}/>} label="p95 query latency" value={stats ? ms(stats.p95_search_ms) : '—'} />
-          <Metric icon={<Activity size={17}/>} label="Searches served" value={stats?.searches ?? '—'} />
+          <Metric icon={<Activity size={17}/>} label={stats?.role === 'coordinator' ? 'Healthy shards' : 'Searches served'} value={stats?.role === 'coordinator' ? `${stats.healthy_shards}/${stats.shards}` : (stats?.searches ?? '—')} />
         </section>
 
         {error && <div className="error-card">{error}</div>}
@@ -134,7 +134,7 @@ function App() {
                 <article className="result" key={r.id}>
                   <div className="result-rank">{String(idx+1).padStart(2,'0')}</div>
                   <div className="result-main">
-                    <div className="result-source">{r.source}</div>
+                    <div className="result-source">{r.source}{r.shard_id != null ? ` · shard ${r.shard_id}` : ''}</div>
                     <h3>{r.url ? <a href={r.url} target="_blank" rel="noreferrer">{r.title} <ArrowUpRight size={14}/></a> : r.title}</h3>
                     <p>{r.snippet}</p>
                     <div className="score-row">
@@ -151,16 +151,16 @@ function App() {
 
         <section className="architecture">
           <div className="eyebrow"><Gauge size={14}/> architecture</div>
-          <h2>One query. Two retrieval engines.</h2>
+          <h2>One query. Multiple shards. Two retrieval engines.</h2>
           <div className="flow">
-            <FlowCard icon={<Search/>} title="Query" text="tokenize + normalize"/>
+            <FlowCard icon={<Search/>} title="Coordinator" text="fan-out query"/>
             <div className="connector">→</div>
             <div className="parallel">
               <FlowCard icon={<BookOpen/>} title="BM25" text="custom inverted index"/>
               <FlowCard icon={<Sparkles/>} title="Semantic" text="SVD latent vectors"/>
             </div>
             <div className="connector">→</div>
-            <FlowCard icon={<Waypoints/>} title="RRF" text="rank fusion"/>
+            <FlowCard icon={<Waypoints/>} title="Global RRF" text="merge shard top-k"/>
             <div className="connector">→</div>
             <FlowCard icon={<Bot/>} title="Answer" text="grounded synthesis"/>
           </div>

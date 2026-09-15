@@ -1,0 +1,42 @@
+services:
+  shard-0:
+    build: .
+    environment:
+      SERVICE_ROLE: shard
+      SHARD_ID: "0"
+      SHARD_COUNT: "3"
+      CLUSTER_TOKEN: nexus-local-cluster
+      SEMANTIC_PROVIDER: local
+
+  shard-1:
+    build: .
+    environment:
+      SERVICE_ROLE: shard
+      SHARD_ID: "1"
+      SHARD_COUNT: "3"
+      CLUSTER_TOKEN: nexus-local-cluster
+      SEMANTIC_PROVIDER: local
+
+  shard-2:
+    build: .
+    environment:
+      SERVICE_ROLE: shard
+      SHARD_ID: "2"
+      SHARD_COUNT: "3"
+      CLUSTER_TOKEN: nexus-local-cluster
+      SEMANTIC_PROVIDER: local
+
+  coordinator:
+    build: .
+    ports:
+      - "8000:8000"
+    depends_on:
+      - shard-0
+      - shard-1
+      - shard-2
+    environment:
+      SERVICE_ROLE: coordinator
+      SHARD_COUNT: "3"
+      SHARD_URLS: "0=http://shard-0:8000,1=http://shard-1:8000,2=http://shard-2:8000"
+      CLUSTER_TOKEN: nexus-local-cluster
+      SEMANTIC_PROVIDER: local

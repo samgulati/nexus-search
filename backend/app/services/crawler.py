@@ -1,10 +1,10 @@
 from __future__ import annotations
 
-import asyncio
 import ipaddress
 import socket
 import time
 from collections import deque
+from typing import Awaitable, Callable
 from urllib.parse import urldefrag, urljoin, urlparse
 from urllib.robotparser import RobotFileParser
 
@@ -51,7 +51,11 @@ class Crawler:
             self._robots[origin] = rp
         return self._robots[origin].can_fetch(settings.crawl_user_agent, url)
 
-    async def crawl(self, request: CrawlRequest) -> CrawlResponse:
+    async def crawl(
+        self,
+        request: CrawlRequest,
+        index_many: Callable[[list[DocumentIn]], Awaitable[tuple[int, int]]] | None = None,
+    ) -> CrawlResponse:
         t0 = time.perf_counter()
         queue = deque((str(seed), 0) for seed in request.seeds)
         seen: set[str] = set()
@@ -100,7 +104,10 @@ class Crawler:
                 except Exception:
                     failed += 1
 
-        indexed, duplicates = index_service.add_many(items)
+        if index_many is None:
+            indexed, duplicates = index_service.add_many(items)
+        else:
+            indexed, duplicates = await index_many(items)
         return CrawlResponse(
             crawled=len(seen),
             indexed=indexed,

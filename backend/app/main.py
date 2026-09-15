@@ -1,40 +1,57 @@
 from __future__ import annotations
 
 import hmac
+import json
+from contextlib import asynccontextmanager
 from pathlib import Path
 from typing import Literal
-from contextlib import asynccontextmanager
 
 from fastapi import Depends, FastAPI, Header, HTTPException, Query
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
 
+from .cluster import ClusterService, cluster_service
 from .config import settings
 from .models import (
     AskRequest,
     AskResponse,
+    BatchIndexResponse,
     CrawlRequest,
     CrawlResponse,
     Document,
+    DocumentBatch,
     DocumentIn,
     SearchResponse,
     StatsResponse,
 )
 from .services import answer_service, crawler, index_service
 
+
 @asynccontextmanager
 async def lifespan(_app: FastAPI):
     seed = Path(__file__).resolve().parent / "data" / "seed_documents.json"
-    if not index_service.documents:
-        index_service.load_seed_file(seed)
+    if not index_service.documents and seed.exists():
+        if settings.service_role == "coordinator":
+            # Coordinator owns routing; shards own the actual indexes.
+            pass
+        elif settings.service_role == "shard":
+            data = json.loads(seed.read_text(encoding="utf-8"))
+            items = [DocumentIn(**item) for item in data]
+            selected = [
+                item for item in items
+                if ClusterService.seed_belongs_here(item, settings.shard_id, settings.shard_count)
+            ]
+            index_service.add_many(selected)
+        else:
+            index_service.load_seed_file(seed)
     yield
 
 
 app = FastAPI(
     title="Nexus — Distributed AI Search",
-    description="Hybrid BM25 + latent-semantic retrieval with grounded AI synthesis.",
-    version="1.0.0",
+    description="Distributed hybrid BM25 + semantic retrieval with grounded answer synthesis.",
+    version="2.0.0",
     lifespan=lifespan,
 )
 
@@ -50,26 +67,33 @@ app.add_middleware(
 
 @app.get("/api/health")
 def health() -> dict:
-    return {"status": "ok", "service": "nexus-search", "documents": len(index_service.documents)}
+    return {
+        "status": "ok",
+        "service": "nexus-search",
+        "role": settings.service_role,
+        "shard_id": settings.shard_id if settings.service_role == "shard" else None,
+        "documents": len(index_service.documents),
+    }
 
 
 @app.get("/api/stats", response_model=StatsResponse)
-def stats() -> StatsResponse:
-    return index_service.get_stats()
+async def stats() -> StatsResponse:
+    return await cluster_service.get_stats()
 
 
 @app.get("/api/search", response_model=SearchResponse)
-def search(
+async def search(
     q: str = Query(min_length=2, max_length=500),
     mode: Literal["hybrid", "lexical", "semantic"] = "hybrid",
     top_k: int = Query(default=10, ge=1, le=25),
 ) -> SearchResponse:
-    return index_service.search(q, mode=mode, top_k=top_k)
+    return await cluster_service.search(q, mode=mode, top_k=top_k)
 
 
 @app.post("/api/ask", response_model=AskResponse)
 async def ask(request: AskRequest) -> AskResponse:
-    return await answer_service.answer(request.query, request.top_k)
+    search_response = await cluster_service.search(request.query, mode="hybrid", top_k=request.top_k)
+    return await answer_service.answer_from_search(request.query, search_response)
 
 
 def require_admin(x_admin_token: str | None = Header(default=None)) -> None:
@@ -79,20 +103,60 @@ def require_admin(x_admin_token: str | None = Header(default=None)) -> None:
         raise HTTPException(status_code=401, detail="Invalid admin token")
 
 
+def require_cluster(x_cluster_token: str | None = Header(default=None)) -> None:
+    if not settings.cluster_token:
+        raise HTTPException(status_code=403, detail="Internal cluster endpoints are disabled")
+    if not x_cluster_token or not hmac.compare_digest(x_cluster_token, settings.cluster_token):
+        raise HTTPException(status_code=401, detail="Invalid cluster token")
+
+
 @app.post("/api/index/document", response_model=Document, dependencies=[Depends(require_admin)])
-def add_document(item: DocumentIn) -> Document:
-    doc, _created = index_service.add_document(item)
-    return doc
+async def add_document(item: DocumentIn) -> Document:
+    return await cluster_service.add_document(item)
 
 
 @app.post("/api/crawl", response_model=CrawlResponse, dependencies=[Depends(require_admin)])
 async def crawl(request: CrawlRequest) -> CrawlResponse:
-    return await crawler.crawl(request)
+    return await crawler.crawl(request, index_many=cluster_service.add_many)
 
 
-# Single-container production serving: FastAPI serves the compiled React app when present.
+# Internal shard API. It is token-protected even when the service has a public domain.
+@app.get("/internal/search", response_model=SearchResponse, dependencies=[Depends(require_cluster)])
+def internal_search(
+    q: str = Query(min_length=2, max_length=500),
+    mode: Literal["hybrid", "lexical", "semantic"] = "hybrid",
+    top_k: int = Query(default=20, ge=1, le=100),
+) -> SearchResponse:
+    response = index_service.search(q, mode=mode, top_k=top_k)
+    for result in response.results:
+        result.shard_id = str(settings.shard_id)
+    return response
+
+
+@app.get("/internal/stats", response_model=StatsResponse, dependencies=[Depends(require_cluster)])
+def internal_stats() -> StatsResponse:
+    base = index_service.get_stats()
+    base.role = settings.service_role
+    base.shards = 1
+    base.healthy_shards = 1
+    return base
+
+
+@app.post("/internal/index/document", response_model=Document, dependencies=[Depends(require_cluster)])
+def internal_add_document(item: DocumentIn) -> Document:
+    doc, _created = index_service.add_document(item)
+    return doc
+
+
+@app.post("/internal/index/batch", response_model=BatchIndexResponse, dependencies=[Depends(require_cluster)])
+def internal_add_batch(batch: DocumentBatch) -> BatchIndexResponse:
+    added, skipped = index_service.add_many(batch.documents)
+    return BatchIndexResponse(added=added, skipped=skipped)
+
+
+# Single-container production serving: only coordinator/standalone should serve the public UI.
 frontend_dist = Path(__file__).resolve().parents[2] / "frontend" / "dist"
-if frontend_dist.exists():
+if frontend_dist.exists() and settings.service_role != "shard":
     assets = frontend_dist / "assets"
     if assets.exists():
         app.mount("/assets", StaticFiles(directory=assets), name="assets")

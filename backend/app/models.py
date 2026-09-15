@@ -28,6 +28,7 @@ class SearchResult(BaseModel):
     bm25_score: float = 0.0
     semantic_score: float = 0.0
     source: str
+    shard_id: str | None = None
 
 
 class SearchResponse(BaseModel):
@@ -84,3 +85,15 @@ class StatsResponse(BaseModel):
     p95_search_ms: float
     avg_search_ms: float
     uptime_seconds: float
+    role: str = "standalone"
+    shards: int = 0
+    healthy_shards: int = 0
+
+
+class DocumentBatch(BaseModel):
+    documents: list[DocumentIn] = Field(min_length=1, max_length=250)
+
+
+class BatchIndexResponse(BaseModel):
+    added: int
+    skipped: int

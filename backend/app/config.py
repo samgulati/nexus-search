@@ -17,5 +17,13 @@ class Settings:
     cors_origins: str = os.getenv("CORS_ORIGINS", "*")
     crawl_user_agent: str = os.getenv("CRAWL_USER_AGENT", "NexusSearchBot/1.0")
 
+    # Distributed-search configuration. `standalone` preserves the single-node dev mode.
+    service_role: str = os.getenv("SERVICE_ROLE", "standalone").lower()
+    shard_id: str = os.getenv("SHARD_ID", "0")
+    shard_count: int = int(os.getenv("SHARD_COUNT", "1"))
+    shard_urls: str = os.getenv("SHARD_URLS", "")
+    cluster_token: str = os.getenv("CLUSTER_TOKEN", "")
+    shard_timeout_seconds: float = float(os.getenv("SHARD_TIMEOUT_SECONDS", "5"))
+
 
 settings = Settings()

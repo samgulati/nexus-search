@@ -2,20 +2,17 @@ from __future__ import annotations
 
 import re
 import time
-from typing import Iterable
 
 import httpx
 
 from ..config import settings
-from ..models import AskResponse, Citation
-from .index_service import index_service
+from ..models import AskResponse, Citation, SearchResponse
 
 SENTENCE_RE = re.compile(r"(?<=[.!?])\s+")
 
 
 class AnswerService:
-    async def answer(self, query: str, top_k: int = 5) -> AskResponse:
-        search = index_service.search(query, mode="hybrid", top_k=top_k)
+    async def answer_from_search(self, query: str, search: SearchResponse) -> AskResponse:
         citations = [
             Citation(index=i, title=r.title, url=r.url, document_id=r.id)
             for i, r in enumerate(search.results, start=1)
@@ -58,8 +55,9 @@ class AnswerService:
     async def _openai_answer(self, query: str, results) -> str:
         context_blocks = []
         for i, result in enumerate(results, start=1):
-            doc = index_service.documents[result.id]
-            context_blocks.append(f"[{i}] {doc.title}\nURL: {doc.url or 'local'}\n{doc.text[:3500]}")
+            context_blocks.append(
+                f"[{i}] {result.title}\nURL: {result.url or 'local'}\n{result.snippet[:3500]}"
+            )
         context = "\n\n".join(context_blocks)
 
         prompt = (
@@ -94,8 +92,7 @@ class AnswerService:
         query_terms = set(re.findall(r"[a-z0-9]+", query.lower()))
         candidates: list[tuple[float, str, int]] = []
         for source_idx, result in enumerate(results, start=1):
-            doc = index_service.documents[result.id]
-            sentences = SENTENCE_RE.split(doc.text)
+            sentences = SENTENCE_RE.split(result.snippet.replace("…", " "))
             for sentence in sentences:
                 clean = sentence.strip()
                 if len(clean) < 35:

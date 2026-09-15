@@ -4,7 +4,6 @@ import hashlib
 import json
 import threading
 import time
-import uuid
 from collections import deque
 from pathlib import Path
 
@@ -35,7 +34,7 @@ class IndexService:
                 return existing, False
 
             doc = Document(
-                id=uuid.uuid4().hex[:16],
+                id=content_hash[:16],
                 title=item.title.strip(),
                 text=" ".join(item.text.split()),
                 url=item.url,
