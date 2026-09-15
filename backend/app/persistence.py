@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from typing import Iterable
+from collections.abc import Iterable
 
 import psycopg
 
@@ -12,8 +12,8 @@ class PostgresDocumentStore:
     """Durable shard document storage backed by PostgreSQL.
 
     PostgreSQL stores the canonical shard-owned documents. The BM25 and
-    semantic search structures remain in memory and are rebuilt from these
-    documents when a shard starts.
+    semantic search structures stay in memory and are rebuilt from these
+    rows whenever a shard starts.
     """
 
     def __init__(self, database_url: str) -> None:
@@ -54,7 +54,6 @@ class PostgresDocumentStore:
                     ON nexus_documents (shard_id)
                     """
                 )
-            conn.commit()
 
     def load_shard(self, shard_id: str) -> list[Document]:
         if not self.enabled:
@@ -128,3 +127,16 @@ class PostgresDocumentStore:
                     ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s)
                     ON CONFLICT (shard_id, content_hash) DO UPDATE SET
                         document_id = EXCLUDED.document_id,
+                        title = EXCLUDED.title,
+                        body = EXCLUDED.body,
+                        url = EXCLUDED.url,
+                        source = EXCLUDED.source,
+                        indexed_at = EXCLUDED.indexed_at
+                    """,
+                    rows,
+                )
+
+        return len(rows)
+
+
+document_store = PostgresDocumentStore(settings.database_url)
