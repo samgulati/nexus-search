@@ -1,0 +1,122 @@
+[
+  {
+    "title": "Apache Kafka: Distributed Event Streaming",
+    "url": "https://kafka.apache.org/documentation/",
+    "source": "demo-corpus",
+    "text": "Apache Kafka is a distributed event streaming platform built around an append-only log. Producers publish records to topics, topics are split into partitions, and consumers read records by offset. Partitions provide the unit of ordering and parallelism. Consumer groups divide partitions among members so a topic can be processed concurrently. Replication protects partitions from broker failure, while acknowledgements and idempotent producer settings can improve delivery guarantees. Kafka is commonly used to decouple services, build event-driven systems, and move high-volume data between applications."
+  },
+  {
+    "title": "Transactional Outbox Pattern",
+    "url": "https://microservices.io/patterns/data/transactional-outbox.html",
+    "source": "demo-corpus",
+    "text": "The transactional outbox pattern solves the dual-write problem when a service must update its database and publish an event. The application writes both the business state and an outbox record in one local database transaction. A relay later publishes the outbox record to a message broker. Consumers should remain idempotent because a relay can publish the same event more than once after failures. The pattern avoids requiring a distributed transaction between a database and a broker while preserving atomic intent."
+  },
+  {
+    "title": "Idempotency in Distributed Systems",
+    "url": "https://stripe.com/docs/idempotency",
+    "source": "demo-corpus",
+    "text": "Idempotency means repeating an operation produces the same externally visible effect as performing it once. APIs often accept an idempotency key and persist the result associated with that key. If a client retries after a timeout, the server returns the original result instead of executing the side effect again. Idempotency is especially important with at-least-once delivery, retry loops, payment operations, and message processing where duplicates are possible."
+  },
+  {
+    "title": "Exponential Backoff and Jitter",
+    "url": "https://aws.amazon.com/builders-library/timeouts-retries-and-backoff-with-jitter/",
+    "source": "demo-corpus",
+    "text": "Retries can turn a partial failure into a larger outage if many clients retry at the same time. Exponential backoff increases the delay between attempts, while jitter randomizes the delay so clients do not synchronize. Systems should cap the number of retries, use timeouts, and distinguish transient failures from permanent errors. Retry policies work best together with idempotent operations, circuit breakers, and observability."
+  },
+  {
+    "title": "OpenTelemetry Traces and Context Propagation",
+    "url": "https://opentelemetry.io/docs/concepts/signals/traces/",
+    "source": "demo-corpus",
+    "text": "Distributed tracing follows a request across services by recording spans that share trace context. Trace identifiers and parent span identifiers are propagated across process boundaries, usually through HTTP or messaging headers. OpenTelemetry provides vendor-neutral APIs and SDKs for traces, metrics, and logs. Correlation between application logs and trace IDs can reduce incident diagnosis time because engineers can reconstruct a request path across many services."
+  },
+  {
+    "title": "Kubernetes Deployments and Horizontal Scaling",
+    "url": "https://kubernetes.io/docs/concepts/workloads/controllers/deployment/",
+    "source": "demo-corpus",
+    "text": "A Kubernetes Deployment manages replicated application Pods and supports rolling updates. Desired replica count is reconciled continuously by the control plane. Services provide stable networking in front of changing Pods, while readiness probes prevent traffic from reaching instances that are not ready. Horizontal Pod Autoscaling can adjust replica counts based on resource or custom metrics. Stateless services are easier to scale horizontally because any replica can serve a request."
+  },
+  {
+    "title": "Redis Caching and Eviction",
+    "url": "https://redis.io/docs/latest/develop/reference/eviction/",
+    "source": "demo-corpus",
+    "text": "Redis is frequently used as an in-memory cache because it provides low-latency key-value access. A cache can reduce load on databases and downstream services, but data freshness and invalidation must be considered. When memory is constrained, eviction policies such as LRU or LFU choose keys to remove. Cache-aside is a common pattern where applications read from cache first, load missing data from the primary store, and then populate the cache."
+  },
+  {
+    "title": "BM25 Ranking for Text Search",
+    "url": "https://en.wikipedia.org/wiki/Okapi_BM25",
+    "source": "demo-corpus",
+    "text": "BM25 is a probabilistic ranking function used in information retrieval. It rewards query terms that occur frequently in a document but applies saturation so repeated occurrences have diminishing returns. It also normalizes for document length and gives more weight to rare terms through inverse document frequency. Search engines often use BM25 as a strong lexical retrieval baseline before applying semantic retrieval or neural reranking."
+  },
+  {
+    "title": "Inverted Index Architecture",
+    "url": "https://en.wikipedia.org/wiki/Inverted_index",
+    "source": "demo-corpus",
+    "text": "An inverted index maps terms to the documents that contain them. Instead of scanning every document for each query, the search engine reads posting lists for the query terms and computes scores only for candidate documents. Posting lists may store term frequency, positions, and other metadata. Inverted indexes are the core data structure behind large-scale lexical search systems and can be sharded across machines for scale."
+  },
+  {
+    "title": "Hybrid Search: Lexical plus Semantic Retrieval",
+    "url": "https://www.elastic.co/what-is/hybrid-search",
+    "source": "demo-corpus",
+    "text": "Hybrid search combines lexical ranking with semantic vector retrieval. Lexical methods such as BM25 are precise for names, identifiers, and rare terms, while semantic vectors can retrieve documents that express similar meaning with different wording. A fusion method such as reciprocal rank fusion can combine two ranked lists without requiring comparable raw score scales. Rerankers can then reorder a smaller candidate set using a more expensive model."
+  },
+  {
+    "title": "Retrieval-Augmented Generation",
+    "url": "https://arxiv.org/abs/2005.11401",
+    "source": "demo-corpus",
+    "text": "Retrieval-augmented generation grounds a language model with documents retrieved for a user query. A retrieval layer selects relevant evidence, and the generator receives that evidence as context. Good RAG systems preserve source metadata so answers can include citations, evaluate retrieval quality separately from generation quality, and refuse to invent facts when evidence is insufficient. Hybrid retrieval and reranking can improve the context supplied to the model."
+  },
+  {
+    "title": "Vector Similarity Search",
+    "url": "https://en.wikipedia.org/wiki/Vector_database",
+    "source": "demo-corpus",
+    "text": "Vector search represents items as numerical embeddings and retrieves vectors that are close under a similarity metric such as cosine similarity. Embeddings can capture semantic relationships that are not visible through exact keyword matching. At larger scale, approximate nearest-neighbor indexes such as HNSW trade a small amount of recall for much lower query latency. Metadata filters are often applied alongside vector similarity."
+  },
+  {
+    "title": "Latent Semantic Analysis",
+    "url": "https://en.wikipedia.org/wiki/Latent_semantic_analysis",
+    "source": "demo-corpus",
+    "text": "Latent semantic analysis applies singular value decomposition to a term-document matrix to create a lower-dimensional latent space. Documents and queries can then be compared in that space using vector similarity. The method can capture relationships between terms that co-occur in similar contexts. Modern neural embeddings are more powerful, but LSA remains a useful dependency-light semantic retrieval technique and a transparent baseline."
+  },
+  {
+    "title": "Reciprocal Rank Fusion",
+    "url": "https://plg.uwaterloo.ca/~gvcormac/cormacksigir09-rrf.pdf",
+    "source": "demo-corpus",
+    "text": "Reciprocal rank fusion combines multiple ranked result lists by assigning each document a score based on the reciprocal of a constant plus its rank in each list. Because the method works on ranks rather than raw scores, it can combine systems whose score distributions are very different. RRF is commonly used to merge lexical and semantic retrieval results into a stable hybrid ranking."
+  },
+  {
+    "title": "Rate Limiting with Token Buckets",
+    "url": "https://cloud.google.com/architecture/rate-limiting-strategies-techniques",
+    "source": "demo-corpus",
+    "text": "Rate limiting protects services from overload and enforces fair usage. A token bucket accumulates tokens at a configured rate up to a maximum capacity. Each request consumes a token, allowing short bursts while limiting sustained throughput. Distributed rate limiters must coordinate counters or partition limits carefully and should return explicit responses so clients know when to retry."
+  },
+  {
+    "title": "Circuit Breaker Pattern",
+    "url": "https://martinfowler.com/bliki/CircuitBreaker.html",
+    "source": "demo-corpus",
+    "text": "A circuit breaker prevents repeated calls to a failing dependency. In the closed state requests flow normally. After failures cross a threshold, the breaker opens and fails calls quickly instead of waiting for the downstream service. After a recovery timeout it may enter a half-open state and allow a limited number of probes. Circuit breakers reduce cascading failures and are commonly combined with timeouts, retries, and bulkheads."
+  },
+  {
+    "title": "PostgreSQL Indexes and Query Planning",
+    "url": "https://www.postgresql.org/docs/current/indexes.html",
+    "source": "demo-corpus",
+    "text": "PostgreSQL indexes can reduce the amount of data scanned by queries. B-tree indexes are the default and are effective for equality and range predicates. Composite indexes can support queries filtering by multiple columns when their ordering matches access patterns. Query planners estimate costs using table statistics and may choose a sequential scan when an index would not be selective enough. EXPLAIN helps developers inspect query plans."
+  },
+  {
+    "title": "WebSocket Real-Time Communication",
+    "url": "https://developer.mozilla.org/en-US/docs/Web/API/WebSockets_API",
+    "source": "demo-corpus",
+    "text": "WebSockets provide a persistent bidirectional connection between a client and server. They are useful for live dashboards, chat, collaborative applications, and streaming status updates. At scale, servers must manage connection state, heartbeat timeouts, backpressure, and fan-out. When WebSocket gateways are horizontally scaled, shared messaging infrastructure can route events to the instance that owns a recipient connection."
+  },
+  {
+    "title": "OAuth 2.0 and OIDC",
+    "url": "https://openid.net/developers/how-connect-works/",
+    "source": "demo-corpus",
+    "text": "OAuth 2.0 is an authorization framework for delegated access, while OpenID Connect adds an identity layer for authentication. Authorization code flow with PKCE is commonly used by modern web applications. Access tokens should have limited scope and lifetime. Applications validate token issuer, audience, signature, and expiration before using claims for authorization decisions."
+  },
+  {
+    "title": "Search Engine Crawler Frontier",
+    "url": "https://nlp.stanford.edu/IR-book/html/htmledition/the-url-frontier-1.html",
+    "source": "demo-corpus",
+    "text": "A web crawler frontier manages discovered URLs that have not yet been fetched. A production crawler must balance freshness, priority, politeness, and per-host rate limits. URL normalization and canonicalization reduce duplicate work, while content hashes detect pages with identical text. Robots.txt rules should be respected. Large crawlers partition frontier work across workers and persist state so failures do not lose progress."
+  }
+]

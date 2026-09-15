@@ -1,0 +1,21 @@
+from __future__ import annotations
+
+import os
+from dataclasses import dataclass
+
+
+@dataclass(frozen=True)
+class Settings:
+    app_name: str = os.getenv("APP_NAME", "Nexus")
+    environment: str = os.getenv("ENVIRONMENT", "development")
+    admin_token: str = os.getenv("ADMIN_TOKEN", "")
+    openai_api_key: str = os.getenv("OPENAI_API_KEY", "")
+    openai_base_url: str = os.getenv("OPENAI_BASE_URL", "https://api.openai.com/v1")
+    answer_model: str = os.getenv("ANSWER_MODEL", "gpt-5-mini")
+    embedding_model: str = os.getenv("EMBEDDING_MODEL", "text-embedding-3-small")
+    semantic_provider: str = os.getenv("SEMANTIC_PROVIDER", "auto")
+    cors_origins: str = os.getenv("CORS_ORIGINS", "*")
+    crawl_user_agent: str = os.getenv("CRAWL_USER_AGENT", "NexusSearchBot/1.0")
+
+
+settings = Settings()
