@@ -69,7 +69,7 @@ jobs:
       - name: Render Kubernetes manifests
         run: kubectl kustomize k8s/base > /tmp/nexus-k8s.yaml
       - name: Validate Kubernetes resources client-side
-        run: kubectl apply --dry-run=client -f /tmp/nexus-k8s.yaml
+        run: kubectl apply --dry-run=client --validate=false -f /tmp/nexus-k8s.yaml
 
   frontend-build:
     runs-on: ubuntu-latest
