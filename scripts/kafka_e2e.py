@@ -17,6 +17,7 @@ from aiokafka import AIOKafkaConsumer, AIOKafkaProducer
 BROKER = "127.0.0.1:19092"
 CLUSTER_TOKEN = "ci-cluster-token"
 SHARD_PORTS = (19100, 19101)
+WORKER_METRICS_PORTS = (19200, 19201)
 
 
 @dataclass
@@ -98,6 +99,7 @@ def start_worker(
     dlq: str,
     group: str,
     valid_shards: bool,
+    metrics_port: int,
     retry_max: int = 1,
 ) -> ManagedProcess:
     env = os.environ.copy()
@@ -115,6 +117,7 @@ def start_worker(
             "INDEX_RETRY_MAX": str(retry_max),
             "INDEX_RETRY_BASE_SECONDS": "0.1",
             "INDEX_RETRY_MAX_SECONDS": "0.2",
+            "METRICS_PORT": str(metrics_port),
         }
     )
     process = subprocess.Popen(
@@ -128,6 +131,7 @@ def start_worker(
     if process.poll() is not None:
         output = process.stdout.read() if process.stdout else ""
         raise RuntimeError(f"worker exited early:\n{output}")
+    wait_http(f"http://127.0.0.1:{metrics_port}/metrics")
     return ManagedProcess(process, f"worker-{group}")
 
 
@@ -168,6 +172,20 @@ async def send(topic: str, key: str, payload: bytes) -> None:
 
 def internal_headers() -> dict[str, str]:
     return {"X-Cluster-Token": CLUSTER_TOKEN}
+
+
+def worker_metrics(port: int) -> str:
+    response = httpx.get(f"http://127.0.0.1:{port}/metrics", timeout=5)
+    response.raise_for_status()
+    return response.text
+
+
+def assert_metric(metrics: str, metric: str, label_fragment: str) -> None:
+    matching = [
+        line for line in metrics.splitlines()
+        if line.startswith(metric) and label_fragment in line
+    ]
+    assert matching, f"missing metric {metric} with {label_fragment}"
 
 
 def total_documents() -> int:
@@ -251,6 +269,7 @@ async def main() -> None:
             dlq=dlq,
             group=f"nexus-indexers-ci-{run_id}",
             valid_shards=True,
+            metrics_port=WORKER_METRICS_PORTS[0],
         )
         workers.append(worker)
 
@@ -269,7 +288,14 @@ async def main() -> None:
         await send(topic, event_id, payload)
         await asyncio.sleep(1.0)
         assert total_documents() == baseline + 1
-        print(f"IDEMPOTENT_REPLAY event={event_id} documents={baseline + 1}")
+        metrics = worker_metrics(WORKER_METRICS_PORTS[0])
+        assert_metric(metrics, "nexus_index_events_total", 'outcome="indexed"')
+        assert_metric(metrics, "nexus_kafka_consumer_lag", f'topic="{topic}"')
+        assert "nexus_index_event_duration_seconds_count" in metrics
+        print(
+            f"IDEMPOTENT_REPLAY event={event_id} documents={baseline + 1} "
+            "metrics=indexed,lag,processing"
+        )
 
         worker.stop()
         workers.remove(worker)
@@ -281,6 +307,7 @@ async def main() -> None:
             dlq=fail_dlq,
             group=f"nexus-indexers-ci-fail-{run_id}",
             valid_shards=False,
+            metrics_port=WORKER_METRICS_PORTS[1],
             retry_max=1,
         )
         workers.append(fail_worker)
@@ -294,12 +321,17 @@ async def main() -> None:
         dlq_event = await wait_for_dlq(fail_dlq, fail_id)
         assert dlq_event["attempt"] == 2
         assert dlq_event["last_error"]
+        failure_metrics = worker_metrics(WORKER_METRICS_PORTS[1])
+        assert_metric(failure_metrics, "nexus_index_events_total", 'outcome="retry"')
+        assert_metric(failure_metrics, "nexus_index_events_total", 'outcome="dlq"')
+        assert_metric(failure_metrics, "nexus_kafka_consumer_lag", f'topic="{fail_topic}"')
         print(
             f"RETRY_DLQ event={fail_id} attempts={dlq_event['attempt']} "
+            "metrics=retry,dlq,lag "
             f"error={dlq_event['last_error'][:120]}"
         )
 
-        print("KAFKA_E2E_OK")
+        print("KAFKA_E2E_OBSERVABILITY_OK")
     finally:
         for worker in workers:
             worker.stop()
