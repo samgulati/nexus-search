@@ -234,6 +234,11 @@ The Railway deployment uses a public coordinator and private shard services. Kub
 - Why the current 3-shard topology is sharding, not replication.
 - What would be required to add replica groups, rebalancing, and automatic failover.
 
+## Security and interview documentation
+
+- [`docs/SECURITY.md`](docs/SECURITY.md) — trust boundaries, implemented controls, RAG-specific threats, and non-claims.
+- [`docs/INTERVIEW_GUIDE.md`](docs/INTERVIEW_GUIDE.md) — architecture defense, tradeoffs, benchmark interpretation, common traps, and interview drills.
+
 ## Current boundaries
 
 Nexus is intentionally not presented as an internet-scale search engine. Important current boundaries include:
