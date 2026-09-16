@@ -28,6 +28,8 @@ class Settings:
     shard_max_concurrency: int = int(os.getenv("SHARD_MAX_CONCURRENCY", "32"))
     circuit_failure_threshold: int = int(os.getenv("CIRCUIT_FAILURE_THRESHOLD", "3"))
     circuit_recovery_seconds: float = float(os.getenv("CIRCUIT_RECOVERY_SECONDS", "15"))
+    max_inflight_requests: int = int(os.getenv("MAX_INFLIGHT_REQUESTS", "64"))
+    min_ready_shards: int = int(os.getenv("MIN_READY_SHARDS", "1"))
 
     # Phase 3b: asynchronous indexing through Kafka / Redpanda.
     kafka_bootstrap_servers: str = os.getenv("KAFKA_BOOTSTRAP_SERVERS", "")

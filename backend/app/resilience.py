@@ -53,3 +53,29 @@ class CircuitBreaker:
             elapsed = time.monotonic() - self.opened_at
             remaining = max(0.0, self.recovery_seconds - elapsed)
             return CircuitSnapshot("open" if remaining > 0 else "half_open", self.failures, remaining)
+
+
+class CapacityGate:
+    """Immediate admission control for expensive API requests."""
+
+    def __init__(self, capacity: int) -> None:
+        self.capacity = max(1, capacity)
+        self._inflight = 0
+        self._lock = asyncio.Lock()
+
+    async def try_acquire(self) -> bool:
+        async with self._lock:
+            if self._inflight >= self.capacity:
+                return False
+            self._inflight += 1
+            return True
+
+    async def release(self) -> None:
+        async with self._lock:
+            if self._inflight <= 0:
+                raise RuntimeError("CapacityGate released without an acquired slot")
+            self._inflight -= 1
+
+    async def inflight(self) -> int:
+        async with self._lock:
+            return self._inflight

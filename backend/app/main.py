@@ -14,8 +14,17 @@ from opentelemetry.trace import SpanKind, Status, StatusCode
 
 from .cluster import ClusterService, cluster_service
 from .config import settings
-from .observability import extract_http_context, observe_http, render_metrics, trace_id_hex, tracer
+from .observability import (
+    APP_INFLIGHT,
+    REQUEST_GATE_EVENTS,
+    extract_http_context,
+    observe_http,
+    render_metrics,
+    trace_id_hex,
+    tracer,
+)
 from .persistence import document_store
+from .resilience import CapacityGate
 from .queueing import index_queue
 from .models import (
     AskRequest,
@@ -83,6 +92,8 @@ app = FastAPI(
 )
 
 origins = [o.strip() for o in settings.cors_origins.split(",") if o.strip()]
+request_gate = CapacityGate(settings.max_inflight_requests)
+
 app.add_middleware(
     CORSMiddleware,
     allow_origins=origins or ["*"],
@@ -90,6 +101,36 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+
+@app.middleware("http")
+async def load_shedding_middleware(request: Request, call_next):
+    path = request.url.path
+    protected = (
+        path == "/api/search"
+        or path == "/api/ask"
+        or path == "/api/crawl"
+        or path.startswith("/api/index/")
+    )
+    if not protected:
+        return await call_next(request)
+
+    if not await request_gate.try_acquire():
+        REQUEST_GATE_EVENTS.labels("rejected").inc()
+        return Response(
+            content='{"detail":"Server is at request capacity"}',
+            status_code=503,
+            media_type="application/json",
+            headers={"Retry-After": "1"},
+        )
+
+    REQUEST_GATE_EVENTS.labels("admitted").inc()
+    APP_INFLIGHT.inc()
+    try:
+        return await call_next(request)
+    finally:
+        APP_INFLIGHT.dec()
+        await request_gate.release()
 
 
 @app.middleware("http")
@@ -153,6 +194,31 @@ def health() -> dict:
         "shard_id": settings.shard_id if settings.service_role == "shard" else None,
         "documents": len(index_service.documents),
     }
+
+
+@app.get("/api/ready")
+async def ready() -> Response:
+    if settings.service_role != "coordinator":
+        return Response(
+            content=json.dumps({"status": "ready", "role": settings.service_role}),
+            media_type="application/json",
+        )
+
+    stats = await cluster_service.get_stats()
+    minimum = max(1, min(settings.min_ready_shards, max(1, stats.shards)))
+    is_ready = stats.healthy_shards >= minimum
+    payload = {
+        "status": "ready" if is_ready else "not_ready",
+        "role": "coordinator",
+        "healthy_shards": stats.healthy_shards,
+        "required_shards": minimum,
+        "total_shards": stats.shards,
+    }
+    return Response(
+        content=json.dumps(payload),
+        status_code=200 if is_ready else 503,
+        media_type="application/json",
+    )
 
 
 @app.get("/api/stats", response_model=StatsResponse)

@@ -64,6 +64,15 @@ SHARD_INFLIGHT = Gauge(
     "nexus_shard_inflight_requests",
     "Current coordinator requests executing against shards.",
 )
+REQUEST_GATE_EVENTS = Counter(
+    "nexus_request_gate_events_total",
+    "Application request-admission outcomes.",
+    ("outcome",),
+)
+APP_INFLIGHT = Gauge(
+    "nexus_app_inflight_requests",
+    "Current admitted expensive API requests.",
+)
 
 _tracing_configured = False
 _worker_metrics_started = False
