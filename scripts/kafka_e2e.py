@@ -10,6 +10,7 @@ import sys
 import time
 import uuid
 from dataclasses import dataclass
+from pathlib import Path
 
 import httpx
 from aiokafka import AIOKafkaConsumer, AIOKafkaProducer
@@ -260,7 +261,12 @@ async def main() -> None:
             start_shard(1, SHARD_PORTS[1]),
         ]
         baseline = total_documents()
-        assert baseline == 20, f"expected 20 seed docs across two shards, got {baseline}"
+        seed_path = Path("backend/app/data/seed_documents.json")
+        expected_seed_docs = len(json.loads(seed_path.read_text(encoding="utf-8")))
+
+        assert baseline == expected_seed_docs, (
+            f"expected {expected_seed_docs} seed docs across two shards, got {baseline}"
+        )
 
         topic = f"nexus-index-ci-{run_id}"
         dlq = f"nexus-index-ci-dlq-{run_id}"
