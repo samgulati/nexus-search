@@ -205,6 +205,26 @@ PYTHONPATH=backend python3 scripts/benchmark_http.py \
   --output benchmark-results.json
 ```
 
+## Adaptive Search Autopilot
+
+Nexus can run public search requests with `mode=auto`. The controller chooses an execution plan from live system state rather than using one fixed retrieval path.
+
+Signals currently include:
+
+- query shape (exact/identifier-style vs natural language);
+- process in-flight request utilization;
+- recent coordinator p95 search latency;
+- healthy-shard count;
+- per-shard circuit-breaker state.
+
+The controller exposes an explainable plan in the search response, including the selected retrieval mode, operating tier (`quality`, `balanced`, or `survival`), generation decision, latency budget, shard health and decision reasons.
+
+Under healthy conditions, natural-language queries use hybrid retrieval. Exact/identifier-style queries can favor lexical retrieval. Under severe pressure or insufficient shard health, Nexus can fall back to lexical retrieval and disable LLM generation in favor of the grounded extractive answer path.
+
+Explicit `hybrid`, `lexical`, or `semantic` requests remain manual overrides and are never silently replaced by Autopilot.
+
+This feature is a deterministic policy controller, not a learned optimizer; current thresholds are configurable and should be evaluated against workload-specific quality/latency objectives before production use.
+
 ## Failure behavior
 
 Nexus has explicit behavior for dependency and overload failures rather than relying on a single generic error path.

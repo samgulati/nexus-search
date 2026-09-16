@@ -31,12 +31,31 @@ class SearchResult(BaseModel):
     shard_id: str | None = None
 
 
+class SearchPlan(BaseModel):
+    requested_mode: Literal["auto", "hybrid", "lexical", "semantic"]
+    selected_mode: Literal["hybrid", "lexical", "semantic"]
+    tier: Literal["quality", "balanced", "survival", "manual"]
+    query_profile: Literal["exact", "natural_language"]
+    query_tokens: int
+    reasons: list[str]
+    healthy_shards: int
+    total_shards: int
+    unavailable_circuits: int = 0
+    inflight: int
+    capacity: int
+    load_ratio: float
+    observed_p95_ms: float
+    latency_budget_ms: float
+    generation_allowed: bool
+
+
 class SearchResponse(BaseModel):
     query: str
     mode: Literal["hybrid", "lexical", "semantic"]
     took_ms: float
     total: int
     results: list[SearchResult]
+    plan: SearchPlan | None = None
 
 
 class AskRequest(BaseModel):
@@ -59,6 +78,7 @@ class AskResponse(BaseModel):
     generation_ms: float
     model: str
     grounded: bool
+    plan: SearchPlan | None = None
 
 
 class CrawlRequest(BaseModel):

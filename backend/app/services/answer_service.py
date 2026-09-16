@@ -12,7 +12,9 @@ SENTENCE_RE = re.compile(r"(?<=[.!?])\s+")
 
 
 class AnswerService:
-    async def answer_from_search(self, query: str, search: SearchResponse) -> AskResponse:
+    async def answer_from_search(
+        self, query: str, search: SearchResponse, *, force_extractive: bool = False
+    ) -> AskResponse:
         citations = [
             Citation(index=i, title=r.title, url=r.url, document_id=r.id)
             for i, r in enumerate(search.results, start=1)
@@ -27,10 +29,14 @@ class AnswerService:
                 generation_ms=0.0,
                 model="retrieval-only",
                 grounded=True,
+                plan=search.plan,
             )
 
         t0 = time.perf_counter()
-        if settings.openai_api_key:
+        if force_extractive:
+            answer = self._extractive_answer(query, search.results)
+            model = "adaptive-extractive"
+        elif settings.openai_api_key:
             try:
                 answer = await self._openai_answer(query, search.results)
                 model = settings.answer_model
@@ -50,6 +56,7 @@ class AnswerService:
             generation_ms=round(generation_ms, 3),
             model=model,
             grounded=True,
+            plan=search.plan,
         )
 
     async def _openai_answer(self, query: str, results) -> str:

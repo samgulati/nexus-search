@@ -12,6 +12,7 @@ from fastapi.responses import FileResponse, Response
 from fastapi.staticfiles import StaticFiles
 from opentelemetry.trace import SpanKind, Status, StatusCode
 
+from .adaptive import adaptive_search_controller
 from .cluster import ClusterService, cluster_service
 from .config import settings
 from .observability import (
@@ -229,16 +230,44 @@ async def stats() -> StatsResponse:
 @app.get("/api/search", response_model=SearchResponse)
 async def search(
     q: str = Query(min_length=2, max_length=500),
-    mode: Literal["hybrid", "lexical", "semantic"] = "hybrid",
+    mode: Literal["auto", "hybrid", "lexical", "semantic"] = "auto",
     top_k: int = Query(default=10, ge=1, le=25),
 ) -> SearchResponse:
-    return await cluster_service.search(q, mode=mode, top_k=top_k)
+    inflight = await request_gate.inflight()
+    plan = await adaptive_search_controller.plan(
+        query=q,
+        requested_mode=mode,
+        inflight=inflight,
+        capacity=request_gate.capacity,
+        cluster_service=cluster_service,
+    )
+    response = await cluster_service.search(q, mode=plan.selected_mode, top_k=top_k)
+    plan = plan.model_copy(update={"healthy_shards": cluster_service.last_healthy_shards})
+    return response.model_copy(update={"plan": plan})
 
 
 @app.post("/api/ask", response_model=AskResponse)
 async def ask(request: AskRequest) -> AskResponse:
-    search_response = await cluster_service.search(request.query, mode="hybrid", top_k=request.top_k)
-    return await answer_service.answer_from_search(request.query, search_response)
+    inflight = await request_gate.inflight()
+    plan = await adaptive_search_controller.plan(
+        query=request.query,
+        requested_mode="auto",
+        inflight=inflight,
+        capacity=request_gate.capacity,
+        cluster_service=cluster_service,
+    )
+    search_response = await cluster_service.search(
+        request.query,
+        mode=plan.selected_mode,
+        top_k=request.top_k,
+    )
+    plan = plan.model_copy(update={"healthy_shards": cluster_service.last_healthy_shards})
+    search_response = search_response.model_copy(update={"plan": plan})
+    return await answer_service.answer_from_search(
+        request.query,
+        search_response,
+        force_extractive=not plan.generation_allowed,
+    )
 
 
 def require_admin(x_admin_token: str | None = Header(default=None)) -> None:

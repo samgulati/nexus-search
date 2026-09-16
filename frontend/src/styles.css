@@ -77,3 +77,112 @@ h1 span { color:#948aff; }
 footer { max-width:1180px;margin:auto;padding:24px;border-top:1px solid #ffffff0a;display:flex;justify-content:space-between;color:#4f596c;font:10px 'DM Mono',monospace;position:relative;z-index:2; }
 @media(max-width:850px){.workspace{grid-template-columns:1fr}.metric-grid{grid-template-columns:repeat(2,1fr)}.flow{flex-wrap:wrap}.connector{display:none}.controls-row{flex-direction:column}.examples{justify-content:flex-start}.nav-meta span{display:none}.architecture{padding:24px}}
 @media(max-width:540px){main{padding:0 15px 50px}.nav{padding:0 15px}.hero{padding-top:60px}.metric-grid{grid-template-columns:1fr 1fr}.metric{padding:13px}.metric strong{font-size:14px}.search-box{padding-left:14px}.search-box button{padding:12px}.examples{display:none}.architecture{margin-top:42px}.flow-card{width:100%}}
+/* Phase 10b — Adaptive Search Autopilot */
+.autopilot-panel {
+  margin: 12px 0 18px;
+  border: 1px solid #7568ff45;
+  border-radius: 18px;
+  overflow: hidden;
+  background:
+    radial-gradient(circle at 12% 0%, rgba(117,104,255,.12), transparent 33%),
+    #0d111a;
+}
+.autopilot-panel.tier-balanced { border-color:#e2a84d55; }
+.autopilot-panel.tier-survival { border-color:#ff6b7b55; }
+.autopilot-panel.tier-manual { border-color:#7d879955; }
+
+.autopilot-head {
+  display:flex;
+  align-items:flex-start;
+  justify-content:space-between;
+  gap:20px;
+  padding:20px 22px 17px;
+  border-bottom:1px solid #ffffff0b;
+}
+.autopilot-head h2 {
+  margin:7px 0 0;
+  font-size:20px;
+  letter-spacing:-.03em;
+}
+.autopilot-kicker {
+  display:flex;
+  align-items:center;
+  gap:7px;
+  color:#a79fff;
+  font:10px 'DM Mono', monospace;
+  letter-spacing:.07em;
+  text-transform:uppercase;
+}
+.tier-badge {
+  flex:0 0 auto;
+  padding:7px 10px;
+  border:1px solid #786cff55;
+  background:#7568ff12;
+  border-radius:999px;
+  color:#aaa3ff;
+  font:10px 'DM Mono',monospace;
+  text-transform:uppercase;
+  letter-spacing:.06em;
+}
+.tier-badge.tier-balanced { color:#e5b765;border-color:#e2a84d55;background:#e2a84d0d; }
+.tier-badge.tier-survival { color:#ff96a1;border-color:#ff6b7b55;background:#ff6b7b0d; }
+.tier-badge.tier-manual { color:#a4adbb;border-color:#7d879955;background:#7d87990d; }
+
+.autopilot-grid {
+  display:grid;
+  grid-template-columns:repeat(4,1fr);
+  gap:1px;
+  background:#ffffff0a;
+  border-bottom:1px solid #ffffff0a;
+}
+.plan-metric {
+  min-height:76px;
+  background:#0d111a;
+  padding:15px 18px;
+}
+.plan-metric span {
+  display:block;
+  margin-bottom:8px;
+  color:#697386;
+  font:9px 'DM Mono',monospace;
+  letter-spacing:.05em;
+  text-transform:uppercase;
+}
+.plan-metric strong {
+  display:block;
+  color:#e6e9f0;
+  font:12px 'DM Mono',monospace;
+  font-weight:500;
+  text-transform:capitalize;
+}
+.autopilot-reasons {
+  padding:16px 22px 18px;
+  display:grid;
+  grid-template-columns:130px 1fr;
+  gap:12px;
+}
+.autopilot-reasons > span {
+  color:#777f91;
+  font:9px 'DM Mono',monospace;
+  text-transform:uppercase;
+  letter-spacing:.06em;
+  padding-top:3px;
+}
+.autopilot-reasons ul {
+  margin:0;
+  padding-left:17px;
+  color:#aab1bf;
+  font-size:11px;
+  line-height:1.7;
+}
+.autopilot-reasons li::marker { color:#948aff; }
+
+@media(max-width:850px){
+  .autopilot-grid{grid-template-columns:repeat(2,1fr)}
+}
+@media(max-width:540px){
+  .autopilot-head{padding:17px;align-items:center}
+  .autopilot-head h2{font-size:17px}
+  .autopilot-grid{grid-template-columns:1fr 1fr}
+  .autopilot-reasons{grid-template-columns:1fr;padding:15px 17px}
+}

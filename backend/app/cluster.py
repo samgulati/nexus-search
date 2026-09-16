@@ -69,6 +69,7 @@ class ClusterService:
         self.search_latencies: deque[float] = deque(maxlen=1000)
         self.searches = 0
         self.started_at = time.perf_counter()
+        self.last_healthy_shards = len(self.shard_targets) if self.shard_targets else 1
         self._shard_semaphore = asyncio.Semaphore(max(1, settings.shard_max_concurrency))
         self._circuits = {
             target.shard_id: CircuitBreaker(
@@ -126,6 +127,7 @@ class ClusterService:
             shard_responses = await asyncio.gather(*tasks)
 
         available = [response for response in shard_responses if response is not None]
+        self.last_healthy_shards = len(available)
         merged = self.merge_ranked(available, top_k=top_k, query=query)
         took_ms = (time.perf_counter() - t0) * 1000
         self.searches += 1
@@ -237,6 +239,19 @@ class ClusterService:
             merged.append(original.model_copy(update={"score": round(score, 6)}))
         return merged
 
+    def observed_p95_ms(self) -> float:
+        latencies = sorted(self.search_latencies)
+        if not latencies:
+            return 0.0
+        return float(latencies[int((len(latencies) - 1) * 0.95)])
+
+    async def circuit_state_counts(self) -> dict[str, int]:
+        counts = {"closed": 0, "open": 0, "half_open": 0}
+        for circuit in self._circuits.values():
+            snapshot = await circuit.snapshot()
+            counts[snapshot.state] = counts.get(snapshot.state, 0) + 1
+        return counts
+
     async def add_document(self, item: DocumentIn) -> Document:
         if not self.is_coordinator or not self.shard_targets:
             doc, _created = index_service.add_document(item)
@@ -318,6 +333,8 @@ class ClusterService:
                 stats.append(StatsResponse.model_validate(response.json()))
             except Exception:
                 continue
+
+        self.last_healthy_shards = len(stats)
 
         latencies = sorted(self.search_latencies)
         if latencies:

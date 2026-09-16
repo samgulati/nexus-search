@@ -31,6 +31,14 @@ class Settings:
     max_inflight_requests: int = int(os.getenv("MAX_INFLIGHT_REQUESTS", "64"))
     min_ready_shards: int = int(os.getenv("MIN_READY_SHARDS", "1"))
 
+    # Adaptive Search Autopilot.
+    autopilot_enabled: bool = os.getenv("AUTOPILOT_ENABLED", "true").lower() in {"1", "true", "yes"}
+    autopilot_latency_budget_ms: float = float(os.getenv("AUTOPILOT_LATENCY_BUDGET_MS", "1000"))
+    autopilot_warn_load_ratio: float = float(os.getenv("AUTOPILOT_WARN_LOAD_RATIO", "0.65"))
+    autopilot_emergency_load_ratio: float = float(os.getenv("AUTOPILOT_EMERGENCY_LOAD_RATIO", "0.85"))
+    autopilot_generation_cutoff_load_ratio: float = float(os.getenv("AUTOPILOT_GENERATION_CUTOFF_LOAD_RATIO", "0.75"))
+    autopilot_min_health_ratio: float = float(os.getenv("AUTOPILOT_MIN_HEALTH_RATIO", "0.67"))
+
     # Phase 3b: asynchronous indexing through Kafka / Redpanda.
     kafka_bootstrap_servers: str = os.getenv("KAFKA_BOOTSTRAP_SERVERS", "")
     kafka_index_topic: str = os.getenv("KAFKA_INDEX_TOPIC", "nexus-index")

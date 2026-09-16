@@ -73,6 +73,11 @@ APP_INFLIGHT = Gauge(
     "nexus_app_inflight_requests",
     "Current admitted expensive API requests.",
 )
+AUTOPILOT_DECISIONS = Counter(
+    "nexus_autopilot_decisions_total",
+    "Adaptive search-plan decisions by tier, retrieval mode, and query profile.",
+    ("tier", "selected_mode", "query_profile"),
+)
 
 _tracing_configured = False
 _worker_metrics_started = False

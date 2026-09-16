@@ -18,11 +18,17 @@ function ms(v) {
   return `${Number(v).toFixed(v < 10 ? 2 : 1)} ms`
 }
 
+function pct(v) {
+  if (v == null) return '—'
+  return `${Math.round(Number(v) * 100)}%`
+}
+
 function App() {
   const [query, setQuery] = useState('')
-  const [mode, setMode] = useState('hybrid')
+  const [mode, setMode] = useState('auto')
   const [results, setResults] = useState([])
   const [answer, setAnswer] = useState(null)
+  const [plan, setPlan] = useState(null)
   const [stats, setStats] = useState(null)
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState('')
@@ -50,6 +56,8 @@ function App() {
     setLoading(true)
     setError('')
     setAnswer(null)
+    setPlan(null)
+
     try {
       const [searchRes, askRes] = await Promise.all([
         fetch(`/api/search?q=${encodeURIComponent(value)}&mode=${mode}&top_k=8`),
@@ -59,12 +67,16 @@ function App() {
           body: JSON.stringify({ query: value, top_k: 5 })
         })
       ])
+
       if (!searchRes.ok || !askRes.ok) throw new Error('Search request failed')
+
       const searchData = await searchRes.json()
       const askData = await askRes.json()
+
       setResults(searchData.results || [])
       setLastSearchMs(searchData.took_ms)
       setAnswer(askData)
+      setPlan(searchData.plan || askData.plan || null)
       loadStats()
     } catch (e) {
       setError(e.message || 'Something went wrong')
@@ -77,28 +89,52 @@ function App() {
     <div className="app-shell">
       <div className="grid-glow" />
       <header className="nav">
-        <div className="brand"><div className="brand-mark"><Waypoints size={19}/></div><span>Nexus</span></div>
-        <div className="nav-meta"><span><span className="live-dot"/> live demo</span><a href="/docs" target="_blank">API docs <ArrowUpRight size={14}/></a></div>
+        <div className="brand">
+          <div className="brand-mark"><Waypoints size={19}/></div>
+          <span>Nexus</span>
+        </div>
+        <div className="nav-meta">
+          <span><span className="live-dot"/> live demo</span>
+          <a href="/docs" target="_blank">API docs <ArrowUpRight size={14}/></a>
+        </div>
       </header>
 
       <main>
         <section className="hero">
-          <div className="eyebrow"><Sparkles size={14}/> distributed AI search, built from first principles</div>
-          <h1>Search beyond keywords.<br/><span>Reason from evidence.</span></h1>
-          <p className="subhead">A hybrid retrieval engine combining a custom BM25 inverted index, latent-semantic vectors, reciprocal-rank fusion, and citation-grounded answer synthesis.</p>
+          <div className="eyebrow"><Sparkles size={14}/> adaptive distributed AI search</div>
+          <h1>Search beyond keywords.<br/><span>Adapt under pressure.</span></h1>
+          <p className="subhead">
+            Nexus combines custom BM25, semantic retrieval, reciprocal-rank fusion and grounded answers —
+            then changes its execution plan using live shard health, latency and request pressure.
+          </p>
 
           <form className="search-box" onSubmit={(e) => { e.preventDefault(); runSearch() }}>
             <Search size={21} className="search-icon"/>
-            <input value={query} onChange={e => setQuery(e.target.value)} placeholder="Ask about distributed systems, search, RAG, reliability…" />
+            <input
+              value={query}
+              onChange={e => setQuery(e.target.value)}
+              placeholder="Ask about distributed systems, search, RAG, reliability…"
+            />
             <button disabled={loading}>{loading ? 'Searching…' : 'Search'}</button>
           </form>
 
           <div className="controls-row">
             <div className="segmented">
-              {['hybrid','lexical','semantic'].map(m => <button key={m} onClick={() => setMode(m)} className={mode===m?'active':''}>{m}</button>)}
+              {['auto','hybrid','lexical','semantic'].map(m => (
+                <button
+                  type="button"
+                  key={m}
+                  onClick={() => setMode(m)}
+                  className={mode===m?'active':''}
+                >
+                  {m}
+                </button>
+              ))}
             </div>
             <div className="examples">
-              {examples.slice(0,2).map((e,i) => <button key={i} onClick={() => runSearch(e)}>{e}</button>)}
+              {examples.slice(0,2).map((e,i) => (
+                <button type="button" key={i} onClick={() => runSearch(e)}>{e}</button>
+              ))}
             </div>
           </div>
         </section>
@@ -107,35 +143,62 @@ function App() {
           <Metric icon={<Database size={17}/>} label="Indexed documents" value={stats?.documents ?? '—'} />
           <Metric icon={<Braces size={17}/>} label="Vocabulary" value={stats ? stats.vocabulary_terms.toLocaleString() : '—'} />
           <Metric icon={<Timer size={17}/>} label="p95 query latency" value={stats ? ms(stats.p95_search_ms) : '—'} />
-          <Metric icon={<Activity size={17}/>} label={stats?.role === 'coordinator' ? 'Healthy shards' : 'Searches served'} value={stats?.role === 'coordinator' ? `${stats.healthy_shards}/${stats.shards}` : (stats?.searches ?? '—')} />
+          <Metric
+            icon={<Activity size={17}/>}
+            label={stats?.role === 'coordinator' ? 'Healthy shards' : 'Searches served'}
+            value={stats?.role === 'coordinator' ? `${stats.healthy_shards}/${stats.shards}` : (stats?.searches ?? '—')}
+          />
         </section>
 
         {error && <div className="error-card">{error}</div>}
 
+        {plan && <AutopilotPanel plan={plan} />}
+
         {(loading || answer || results.length > 0) && (
           <section className="workspace">
             <div className="answer-panel">
-              <div className="panel-title"><Bot size={18}/><span>Grounded answer</span><span className="pill"><ShieldCheck size={13}/> citation-aware</span></div>
+              <div className="panel-title">
+                <Bot size={18}/>
+                <span>Grounded answer</span>
+                <span className="pill"><ShieldCheck size={13}/> citation-aware</span>
+              </div>
               {loading ? <Skeleton lines={5}/> : <>
                 <p className="answer-text">{answer?.answer}</p>
                 <div className="answer-footer">
                   <span><Zap size={14}/> {answer?.model}</span>
                   <span><Timer size={14}/> retrieve {ms(answer?.retrieval_ms)}</span>
+                  {answer?.plan && (
+                    <span><Gauge size={14}/> {answer.plan.tier} · {answer.plan.selected_mode}</span>
+                  )}
                 </div>
                 <div className="citations">
-                  {answer?.citations?.map(c => <a key={c.index} href={c.url || '#'} target="_blank" rel="noreferrer"><span>[{c.index}]</span>{c.title}</a>)}
+                  {answer?.citations?.map(c => (
+                    <a key={c.index} href={c.url || '#'} target="_blank" rel="noreferrer">
+                      <span>[{c.index}]</span>{c.title}
+                    </a>
+                  ))}
                 </div>
               </>}
             </div>
 
             <div className="results-panel">
-              <div className="panel-title"><Search size={18}/><span>Ranked evidence</span><span className="pill">{results.length} results · {ms(lastSearchMs)}</span></div>
+              <div className="panel-title">
+                <Search size={18}/>
+                <span>Ranked evidence</span>
+                <span className="pill">{results.length} results · {ms(lastSearchMs)}</span>
+              </div>
               {loading ? <Skeleton lines={7}/> : results.map((r, idx) => (
                 <article className="result" key={r.id}>
                   <div className="result-rank">{String(idx+1).padStart(2,'0')}</div>
                   <div className="result-main">
-                    <div className="result-source">{r.source}{r.shard_id != null ? ` · shard ${r.shard_id}` : ''}</div>
-                    <h3>{r.url ? <a href={r.url} target="_blank" rel="noreferrer">{r.title} <ArrowUpRight size={14}/></a> : r.title}</h3>
+                    <div className="result-source">
+                      {r.source}{r.shard_id != null ? ` · shard ${r.shard_id}` : ''}
+                    </div>
+                    <h3>
+                      {r.url
+                        ? <a href={r.url} target="_blank" rel="noreferrer">{r.title} <ArrowUpRight size={14}/></a>
+                        : r.title}
+                    </h3>
                     <p>{r.snippet}</p>
                     <div className="score-row">
                       <span>BM25 {r.bm25_score.toFixed(2)}</span>
@@ -150,24 +213,73 @@ function App() {
         )}
 
         <section className="architecture">
-          <div className="eyebrow"><Gauge size={14}/> architecture</div>
-          <h2>One query. Multiple shards. Two retrieval engines.</h2>
+          <div className="eyebrow"><Gauge size={14}/> adaptive architecture</div>
+          <h2>One query. A live execution decision.</h2>
           <div className="flow">
-            <FlowCard icon={<Search/>} title="Coordinator" text="fan-out query"/>
+            <FlowCard icon={<Search/>} title="Query" text="profile intent" />
+            <div className="connector">→</div>
+            <FlowCard icon={<Gauge/>} title="Autopilot" text="health · load · p95" />
             <div className="connector">→</div>
             <div className="parallel">
-              <FlowCard icon={<BookOpen/>} title="BM25" text="custom inverted index"/>
-              <FlowCard icon={<Sparkles/>} title="Semantic" text="SVD latent vectors"/>
+              <FlowCard icon={<BookOpen/>} title="BM25" text="lexical precision" />
+              <FlowCard icon={<Sparkles/>} title="Semantic" text="meaning retrieval" />
             </div>
             <div className="connector">→</div>
-            <FlowCard icon={<Waypoints/>} title="Global RRF" text="merge shard top-k"/>
+            <FlowCard icon={<Waypoints/>} title="Global RRF" text="merge shard top-k" />
             <div className="connector">→</div>
-            <FlowCard icon={<Bot/>} title="Answer" text="grounded synthesis"/>
+            <FlowCard icon={<Bot/>} title="Answer" text="LLM or extractive" />
           </div>
         </section>
       </main>
 
-      <footer><span>Nexus Search Engine</span><span>FastAPI · React · NumPy · Docker</span></footer>
+      <footer>
+        <span>Nexus Search Engine</span>
+        <span>FastAPI · React · Kafka · PostgreSQL · OpenTelemetry · Kubernetes</span>
+      </footer>
+    </div>
+  )
+}
+
+function AutopilotPanel({ plan }) {
+  const tier = plan.tier || 'manual'
+  const isAuto = plan.requested_mode === 'auto'
+
+  return (
+    <section className={`autopilot-panel tier-${tier}`}>
+      <div className="autopilot-head">
+        <div>
+          <div className="autopilot-kicker"><Zap size={14}/> Adaptive Search Autopilot</div>
+          <h2>{isAuto ? 'Nexus chose this execution plan' : 'Manual retrieval override active'}</h2>
+        </div>
+        <div className={`tier-badge tier-${tier}`}>{tier}</div>
+      </div>
+
+      <div className="autopilot-grid">
+        <PlanMetric label="Selected mode" value={plan.selected_mode} />
+        <PlanMetric label="Query profile" value={plan.query_profile?.replace('_', ' ')} />
+        <PlanMetric label="Shard health" value={`${plan.healthy_shards}/${plan.total_shards}`} />
+        <PlanMetric label="Process load" value={pct(plan.load_ratio)} />
+        <PlanMetric label="Observed p95" value={ms(plan.observed_p95_ms)} />
+        <PlanMetric label="Latency budget" value={ms(plan.latency_budget_ms)} />
+        <PlanMetric label="Generation" value={plan.generation_allowed ? 'allowed' : 'extractive fallback'} />
+        <PlanMetric label="Circuit pressure" value={`${plan.unavailable_circuits} unavailable`} />
+      </div>
+
+      <div className="autopilot-reasons">
+        <span>Decision trace</span>
+        <ul>
+          {(plan.reasons || []).map((reason, i) => <li key={i}>{reason}</li>)}
+        </ul>
+      </div>
+    </section>
+  )
+}
+
+function PlanMetric({ label, value }) {
+  return (
+    <div className="plan-metric">
+      <span>{label}</span>
+      <strong>{value ?? '—'}</strong>
     </div>
   )
 }
