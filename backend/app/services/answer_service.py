@@ -93,6 +93,18 @@ DOMAIN_TOPICS = {
 }
 
 MIN_RESULT_RELEVANCE = 0.18
+RELATIVE_RELEVANCE_FLOOR = 0.58
+JUDGMENT_TERMS = {
+    "should", "always", "better", "best", "when", "tradeoff", "tradeoffs",
+    "appropriate", "worth", "prefer", "choose", "recommended",
+}
+TRADEOFF_TERMS = {
+    "tradeoff", "tradeoffs", "cost", "costs", "overhead", "latency", "throughput",
+    "limitation", "limitations", "downside", "downsides", "advantage", "advantages",
+    "disadvantage", "disadvantages", "depends", "appropriate", "when", "if",
+    "guarantee", "guarantees", "failure", "failures", "retry", "retries",
+    "duplicate", "duplicates", "idempotent", "idempotency",
+}
 
 
 class AnswerService:
@@ -110,8 +122,9 @@ class AnswerService:
             search.results,
             limit=result_limit,
         )
+        supported_results = self._prune_to_supported_results(query, relevant_results)
         search = search.model_copy(
-            update={"results": relevant_results, "total": len(relevant_results)}
+            update={"results": supported_results, "total": len(supported_results)}
         )
 
         citations = [
@@ -220,10 +233,96 @@ class AnswerService:
             ranked.append((relevance, result.score, result))
 
         ranked.sort(key=lambda item: (item[0], item[1]), reverse=True)
-        selected = [item[2] for item in ranked]
-        if limit is not None:
-            selected = selected[:limit]
+        if not ranked:
+            return []
+
+        # Dynamic pruning: once one candidate is clearly stronger, weak tail
+        # matches are not allowed to survive just because they cleared a fixed
+        # global threshold.
+        best_relevance = ranked[0][0]
+        relative_floor = max(MIN_RESULT_RELEVANCE, best_relevance * RELATIVE_RELEVANCE_FLOOR)
+
+        query_terms = cls._query_terms(query)
+        identifier_terms = {
+            term for term in query_terms
+            if any(ch.isdigit() for ch in term) or "-" in term
+        }
+
+        selected = []
+        for relevance, _score, result in ranked:
+            if relevance < relative_floor:
+                continue
+            haystack = f"{result.title} {result.snippet}".lower()
+            if identifier_terms and not all(term in haystack for term in identifier_terms):
+                continue
+            selected.append(result)
+            if limit is not None and len(selected) >= limit:
+                break
         return selected
+
+    @classmethod
+    def _is_judgment_query(cls, query: str) -> bool:
+        terms = set(re.findall(r"[a-z0-9-]+", query.lower()))
+        return bool(terms & JUDGMENT_TERMS)
+
+    @classmethod
+    def _sentence_support_score(cls, query: str, result, sentence: str) -> float:
+        query_terms = cls._query_terms(query)
+        if not query_terms:
+            return 0.0
+
+        lowered = sentence.lower()
+        sentence_terms = set(re.findall(r"[a-z0-9][a-z0-9_+.#-]*", lowered))
+        matched = query_terms & sentence_terms
+        coverage = len(matched) / len(query_terms)
+
+        identifier_terms = {
+            term for term in query_terms
+            if any(ch.isdigit() for ch in term) or "-" in term
+        }
+        identifier_bonus = 0.0
+        if identifier_terms:
+            identifier_hits = len(identifier_terms & sentence_terms)
+            identifier_bonus = 0.25 * (identifier_hits / len(identifier_terms))
+
+        title_terms = set(re.findall(r"[a-z0-9][a-z0-9_+.#-]*", (result.title or "").lower()))
+        title_overlap = len(query_terms & title_terms) / len(query_terms)
+
+        score = 0.65 * coverage + 0.20 * title_overlap + identifier_bonus
+
+        if cls._is_judgment_query(query):
+            tradeoff_hits = sentence_terms & TRADEOFF_TERMS
+            if not tradeoff_hits:
+                score *= 0.45
+            else:
+                score += min(0.20, 0.05 * len(tradeoff_hits))
+
+        return max(0.0, min(score, 1.0))
+
+    @classmethod
+    def _supporting_sentences(cls, query: str, result) -> list[tuple[float, str]]:
+        sentences = SENTENCE_RE.split((result.snippet or "").replace("…", " "))
+        supported: list[tuple[float, str]] = []
+        threshold = 0.34 if cls._is_judgment_query(query) else 0.30
+
+        for sentence in sentences:
+            clean = sentence.strip()
+            if len(clean) < 35:
+                continue
+            score = cls._sentence_support_score(query, result, clean)
+            if score >= threshold:
+                supported.append((score, clean))
+
+        supported.sort(key=lambda item: item[0], reverse=True)
+        return supported
+
+    @classmethod
+    def _prune_to_supported_results(cls, query: str, results):
+        supported_results = []
+        for result in results:
+            if cls._supporting_sentences(query, result):
+                supported_results.append(result)
+        return supported_results
 
     @staticmethod
     def _source_host(result) -> str:
@@ -408,34 +507,33 @@ class AnswerService:
             raise ValueError("No output text returned")
         return "\n".join(chunks).strip()
 
-    @staticmethod
-    def _extractive_answer(query: str, results) -> str:
-        query_terms = set(re.findall(r"[a-z0-9]+", query.lower()))
+    @classmethod
+    def _extractive_answer(cls, query: str, results) -> str:
         candidates: list[tuple[float, str, int]] = []
         for source_idx, result in enumerate(results, start=1):
-            sentences = SENTENCE_RE.split(result.snippet.replace("…", " "))
-            for sentence in sentences:
-                clean = sentence.strip()
-                if len(clean) < 35:
-                    continue
-                terms = set(re.findall(r"[a-z0-9]+", clean.lower()))
-                overlap = len(query_terms & terms)
-                score = overlap + max(result.semantic_score, 0) * 2
-                candidates.append((score, clean, source_idx))
-        candidates.sort(key=lambda x: x[0], reverse=True)
-        selected = []
+            for score, sentence in cls._supporting_sentences(query, result):
+                candidates.append((score, sentence, source_idx))
+
+        candidates.sort(key=lambda item: item[0], reverse=True)
+        selected: list[str] = []
         seen = set()
+
         for _score, sentence, source_idx in candidates:
-            key = sentence.lower()[:100]
+            key = re.sub(r"\s+", " ", sentence.lower())[:140]
             if key in seen:
                 continue
             seen.add(key)
             selected.append(f"{sentence} [{source_idx}]")
             if len(selected) == 3:
                 break
+
         if not selected:
-            return "The indexed sources matched the query, but they did not contain enough extractable detail for a grounded answer."
+            return (
+                "The indexed sources matched the query, but Nexus could not identify "
+                "a sentence with enough direct support to produce a grounded answer."
+            )
         return " ".join(selected)
+
 
 
 answer_service = AnswerService()
