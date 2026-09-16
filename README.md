@@ -1,61 +1,71 @@
 # Nexus — Distributed AI Search Engine
 
-Nexus is a from-first-principles search engine that combines a **custom BM25 inverted index**, **semantic retrieval**, **reciprocal-rank fusion**, an asynchronous web crawler, and a **citation-grounded answer layer**. Version 2 adds a real coordinator/shard architecture: queries fan out across independently deployed search shards and global top-k results are merged at the coordinator. The public deployment runs one coordinator plus three private Railway shards.
+Nexus is a from-first-principles distributed search engine that combines a custom BM25 inverted index, semantic retrieval, reciprocal-rank fusion (RRF), asynchronous crawling/indexing, PostgreSQL-backed shard state, Kafka/Redpanda indexing, OpenTelemetry/Prometheus-style observability, resilience controls, and citation-grounded answers.
+
+The same application image can run as a standalone node, coordinator, or shard. The distributed topology has been exercised both on Railway and in Kubernetes `kind` failure-recovery tests.
 
 ## Architecture
 
 ```mermaid
 flowchart LR
-    U[React client] --> C[Query coordinator]
-    C --> S0[Shard 0]
-    C --> S1[Shard 1]
-    C --> S2[Shard 2]
+    U[React client] --> C[Coordinator]
 
-    S0 --> B0[BM25 + semantic]
-    S1 --> B1[BM25 + semantic]
-    S2 --> B2[BM25 + semantic]
+    C -->|fan-out| S0[Shard 0]
+    C -->|fan-out| S1[Shard 1]
+    C -->|fan-out| S2[Shard 2]
 
-    B0 --> C
-    B1 --> C
-    B2 --> C
-    C --> R[Global reciprocal-rank fusion]
+    S0 --> I0[BM25 + semantic]
+    S1 --> I1[BM25 + semantic]
+    S2 --> I2[BM25 + semantic]
+
+    I0 --> C
+    I1 --> C
+    I2 --> C
+    C --> R[Global RRF merge]
     R --> G[Grounded answer + citations]
     G --> U
 
-    W[Async crawler / indexing API] --> H[Rendezvous hashing]
+    W[Async index API / crawler] --> K[Kafka / Redpanda]
+    K --> X[Index worker]
+    X --> H[Rendezvous hashing]
     H --> S0
     H --> S1
     H --> S2
+
+    S0 --> P[(PostgreSQL)]
+    S1 --> P
+    S2 --> P
 ```
 
-## What is implemented
+See [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md) for component boundaries, request flows, consistency choices, and scaling tradeoffs.
 
-- **Durable shard recovery (v3)** — optional PostgreSQL source-of-truth per shard; on restart each shard restores only its owned documents and deterministically rebuilds BM25/semantic indexes before serving queries. Writes are idempotent on `(shard_id, content_hash)`.
+## Core implementation
 
-- **BM25 from scratch** — tokenizer, posting lists, document frequency/IDF, length normalization and ranked retrieval.
-- **Semantic retrieval** — OpenAI embeddings when configured; local TF-IDF + NumPy SVD latent-semantic fallback otherwise.
-- **Hybrid retrieval** — RRF combines lexical and semantic rankings without mixing incompatible raw score scales.
-- **Distributed query fan-out** — a coordinator concurrently queries multiple independent shard services and performs a second global rank-fusion pass with deterministic relevance tie-breaking.
-- **Deterministic sharding** — highest-random-weight / rendezvous hashing assigns each document to exactly one shard and minimizes movement when the node set changes.
-- **Distributed indexing path** — coordinator routes manual/crawled documents to their owning shard; shard-internal endpoints are protected by a cluster token.
-- **Failure-aware search** — coordinator merges responses from available shards instead of failing the entire query when one shard is unavailable.
-- **Grounded answers** — citation-aware answer synthesis with a deterministic extractive fallback when no LLM key is configured.
-- **Async crawler** — `robots.txt`, URL canonicalization, duplicate-content hashing, depth/page controls, SSRF/private-network protection.
-- **FastAPI + React UI** — API docs, latency/index metrics, shard attribution on results, and cluster-health display.
-- **Docker + Railway** — one image supports `standalone`, `coordinator`, and `shard` roles through environment configuration.
-- **Automated tests** — search, API, deduplication, rendezvous-hash stability/distribution, seed partitioning, and shard-rank merge behavior.
+- **Custom lexical retrieval** — BM25 with tokenizer, posting lists, document frequency/IDF, length normalization, and ranked retrieval.
+- **Semantic retrieval** — OpenAI embeddings when configured, with a local latent-semantic fallback for dependency-light operation.
+- **Hybrid search** — reciprocal-rank fusion combines lexical and semantic rankings without mixing incompatible raw score scales.
+- **Distributed query fan-out** — the coordinator concurrently queries independently deployed shards and performs global rank fusion.
+- **Deterministic document placement** — highest-random-weight / rendezvous hashing maps each document to one shard and minimizes movement when shard membership changes.
+- **Durable shard state** — optional PostgreSQL persistence lets a shard restore its owned documents and rebuild in-memory search structures at startup.
+- **Asynchronous indexing** — Kafka/Redpanda-backed ingestion with idempotent handling, exponential retry, and dead-letter routing.
+- **Failure-aware search** — shard failures do not automatically fail the whole query; surviving shard results can still be returned.
+- **Circuit breaking + bounded fan-out** — per-shard protection prevents repeated slow/failing calls from consuming coordinator capacity indefinitely.
+- **Admission control** — application-level in-flight request limits shed excess work with HTTP 503 and `Retry-After`.
+- **Readiness vs liveness** — `/api/health` checks process liveness; `/api/ready` reflects whether the configured minimum shard availability is met.
+- **Observability** — request, shard-call, indexing, retry/DLQ, consumer-lag, and admission-control metrics, plus OpenTelemetry context propagation.
+- **Kubernetes orchestration** — coordinator + three shard Deployments, Services, resource requests/limits, ConfigMap/Secret configuration, liveness/readiness probes, and CI-backed `kind` failure tests.
+- **Grounded answers** — citation-aware answer synthesis with deterministic extractive fallback when no LLM key is configured.
+- **Crawler safety** — robots.txt handling, canonicalization, duplicate-content hashing, depth/page bounds, and SSRF/private-network protections.
 
 ## Service roles
 
-Nexus uses one container image for every node:
-
 ```text
-SERVICE_ROLE=standalone   # one-node development mode
-SERVICE_ROLE=coordinator  # public API/UI + query fan-out
-SERVICE_ROLE=shard        # owns a subset of the index
+SERVICE_ROLE=standalone
+SERVICE_ROLE=coordinator
+SERVICE_ROLE=shard
 ```
 
-A three-shard local cluster is included:
+A three-shard Docker topology can be started with:
 
 ```bash
 docker compose -f docker-compose.distributed.yml up --build
@@ -72,6 +82,8 @@ SERVICE_ROLE=coordinator
 SHARD_COUNT=3
 SHARD_URLS=0=http://shard-0:8000,1=http://shard-1:8000,2=http://shard-2:8000
 CLUSTER_TOKEN=<shared-secret>
+MIN_READY_SHARDS=2
+MAX_INFLIGHT_REQUESTS=64
 ```
 
 Shard:
@@ -83,31 +95,42 @@ SHARD_COUNT=3
 CLUSTER_TOKEN=<shared-secret>
 ```
 
-Optional durable shard storage:
+Optional durable storage:
 
 ```text
 DATABASE_URL=postgresql://user:password@host:5432/nexus
 ```
 
-When `DATABASE_URL` is configured, shard document metadata/text survives container replacement and each shard reconstructs its local search structures from PostgreSQL at startup. Without it, Nexus keeps the original dependency-light in-memory behavior for local development and tests.
+Optional asynchronous indexing:
 
-At startup each shard deterministically loads only the seed documents it owns. New documents are routed by the coordinator using the same rendezvous-hash function.
+```text
+KAFKA_BOOTSTRAP_SERVERS=redpanda:9092
+KAFKA_INDEX_TOPIC=nexus-index
+KAFKA_DLQ_TOPIC=nexus-index-dlq
+```
+
+Never commit production values for `CLUSTER_TOKEN`, `ADMIN_TOKEN`, database credentials, or API keys.
 
 ## API
 
 | Endpoint | Method | Purpose |
 | --- | --- | --- |
-| `/api/health` | GET | node health and role |
+| `/api/health` | GET | process liveness and service role |
+| `/api/ready` | GET | readiness based on role and shard availability |
 | `/api/stats` | GET | local or aggregated cluster statistics |
-| `/api/search?q=...&mode=hybrid` | GET | distributed lexical/semantic/hybrid search |
-| `/api/ask` | POST | grounded answer + citations |
-| `/api/index/document` | POST | route a document to its owning shard (admin) |
+| `/api/search?q=...&mode=hybrid` | GET | distributed lexical / semantic / hybrid search |
+| `/api/ask` | POST | grounded answer with citations |
+| `/api/index/document` | POST | synchronous document indexing (admin) |
+| `/api/index/async` | POST | enqueue asynchronous indexing (admin) |
 | `/api/crawl` | POST | crawl and distribute indexed pages (admin) |
-| `/docs` | GET | OpenAPI docs |
+| `/metrics` | GET | metrics endpoint when enabled |
+| `/docs` | GET | OpenAPI documentation |
 
-Shard-internal `/internal/*` endpoints require `X-Cluster-Token` and are not used directly by the browser.
+Shard-internal `/internal/*` endpoints require `X-Cluster-Token` and are intended for coordinator/worker traffic, not browser clients.
 
-## Tests
+## Testing
+
+Backend/unit tests:
 
 ```bash
 python -m venv .venv
@@ -116,71 +139,113 @@ pip install -r backend/requirements-dev.txt
 PYTHONPATH=backend pytest -q backend/tests
 ```
 
-Current test suite: **13 passing tests**.
+The CI pipeline additionally exercises:
 
-## Live deployment
+- real Redpanda indexing paths;
+- retry and DLQ behavior;
+- circuit-breaker failure injection and half-open recovery;
+- overload shedding/readiness behavior;
+- deterministic Kubernetes manifest rendering;
+- a real `kind` cluster with coordinator/shards and shard-failure recovery.
 
-Public coordinator/UI: **https://nexus-search-production.up.railway.app**
+## Kubernetes
 
-The coordinator is the only public service. Three shard services communicate over Railway private networking and expose token-protected `/internal/*` APIs to the coordinator. The 20-document demo corpus is deterministically partitioned by rendezvous hashing across the three shards.
-
-## Benchmarks and failure validation
-
-Single-node algorithm benchmark:
-
-```bash
-python scripts/benchmark.py
-```
-
-The checked-in synthetic run indexed 1,200 generated documents and measured **0.433 ms p95 in-process hybrid retrieval** across 120 queries. This is intentionally an algorithm-level benchmark, not an internet-scale production claim.
-
-A separate live distributed smoke/load test was run against the three-shard Railway deployment using the 20-document demo corpus: **200/200 requests succeeded** at concurrency 20, sustaining **81.15 req/s**, with **237.5 ms p50 / 326.8 ms p95 / 362.0 ms p99 client-observed HTTP latency**. Server-reported query execution measured **92.8 ms p50 / 171.3 ms p95 / 199.7 ms p99** in that run. These figures include a tiny corpus and should be treated as deployment validation, not a scale claim.
-
-Failure injection was also verified by replacing one shard target with an unreachable private address. The coordinator reported **2/3 healthy shards**, continued returning **HTTP 200 partial search results**, and recovered to **3/3 healthy shards** after restoring the target.
-
-Re-run the distributed benchmark with:
+Render the manifests:
 
 ```bash
-python scripts/cluster_benchmark.py --base-url https://nexus-search-production.up.railway.app
+kubectl kustomize k8s/base
 ```
 
-See [`BENCHMARK.md`](BENCHMARK.md) for scopes and caveats.
+Run the full ephemeral cluster test:
 
-## Next engineering milestones
+```bash
+bash scripts/k8s_e2e.sh
+```
 
-The distributed query path is now implemented. The next month of work is deliberately focused on deeper production properties rather than adding superficial features:
+The Kubernetes E2E test verifies:
 
-1. durable shard persistence and incremental indexing;
-2. ANN/HNSW vector retrieval rather than dense scan;
-3. Kafka-backed crawl/index jobs with retries and dead-letter handling;
-4. replica groups, health-based routing and shard failover;
-5. retrieval evaluation using Recall@K, MRR and nDCG;
-6. OpenTelemetry traces and Prometheus/Grafana dashboards;
-7. Kubernetes manifests, autoscaling and controlled failure tests.
+1. coordinator + three shards become Ready;
+2. health/readiness/search work with all three shards;
+3. search remains available with one shard removed while readiness stays healthy at 2/3 shards;
+4. readiness returns HTTP 503 when only 1/3 shards remains and `MIN_READY_SHARDS=2`;
+5. readiness recovers after the removed shards are restored.
 
-## Interview talking points
+See [`k8s/README.md`](k8s/README.md).
 
-- Why BM25 remains useful alongside vector search.
-- How an inverted index changes query complexity.
-- Why RRF is used both inside a shard and across shards.
-- Why shard-local BM25 scores should not be naively summed across machines.
+## Benchmarks
+
+Nexus deliberately separates algorithm-level and deployment-level measurements.
+
+### Synthetic in-process retrieval
+
+A checked-in synthetic benchmark indexed 1,200 generated documents and measured **0.433 ms p95 in-process hybrid retrieval** across 120 queries. This excludes HTTP, TLS, coordinator fan-out, and network latency.
+
+### Repeated deployed HTTP benchmark
+
+Against the Railway coordinator, three repeated 500-request runs were executed at concurrency 40, 60, 80, and 100. At concurrency 60, the median across the three runs was:
+
+- **82.45 completed requests/s**
+- **100% HTTP 200 success**
+- **714.69 ms median p50**
+- **1,035.38 ms median p95**
+- **1,508.70 ms median p99**
+
+At concurrency 80, median throughput fell to **68.58 req/s** while median p95 rose to **2,392.70 ms**, making concurrency 60 the clearest observed latency/throughput knee in these runs.
+
+These numbers are environment-specific deployment observations, not universal capacity claims. See [`BENCHMARK.md`](BENCHMARK.md) for complete scope and caveats.
+
+Reproduce:
+
+```bash
+PYTHONPATH=backend python3 scripts/benchmark_http.py \
+  --base-url https://nexus-search-production.up.railway.app \
+  --requests 500 \
+  --concurrency 40,60,80,100 \
+  --warmup 10 \
+  --output benchmark-results.json
+```
+
+## Failure behavior
+
+Nexus has explicit behavior for dependency and overload failures rather than relying on a single generic error path.
+
+See [`docs/FAILURE_MODES.md`](docs/FAILURE_MODES.md) for the tested behavior and the important distinction between graceful partial results and true replica failover.
+
+## Deployment
+
+Public coordinator/UI:
+
+`https://nexus-search-production.up.railway.app`
+
+The Railway deployment uses a public coordinator and private shard services. Kubernetes manifests are provided separately for orchestration and local `kind` validation.
+
+## Interview-ready design decisions
+
+- Why BM25 still matters next to semantic retrieval.
+- Why RRF is safer than directly combining lexical and semantic raw scores.
+- Why shard-local relevance scores should not be naively summed across machines.
 - Rendezvous hashing vs modulo hashing vs a consistent-hash ring.
-- Partial-result behavior when a shard times out.
-- How to add replicas without duplicating results.
-- How to make rebalancing safe when the shard set changes.
-- Retrieval quality vs generation quality in RAG systems.
+- Why a coordinator can return partial results without providing high availability.
+- Why circuit breakers and bounded fan-out solve different failure modes.
+- Why readiness and liveness must be separate signals.
+- Why retries require idempotency.
+- Why at-least-once Kafka processing is acceptable when storage writes are idempotent.
+- Where backpressure should be enforced and why admission control is per-process in the current design.
+- Why the current 3-shard topology is sharding, not replication.
+- What would be required to add replica groups, rebalancing, and automatic failover.
+
+## Current boundaries
+
+Nexus is intentionally not presented as an internet-scale search engine. Important current boundaries include:
+
+- the demonstrated Railway corpus is small;
+- the current shard topology assigns each document to one shard, so shard loss can reduce result coverage;
+- admission control is process-local rather than a global distributed quota;
+- Kubernetes manifests orchestrate the search tier; PostgreSQL and Kafka/Redpanda are treated as external dependencies;
+- benchmark results vary with deployment region, network path, and Railway resource allocation.
+
+These constraints are documented so benchmark and reliability claims remain reproducible and defensible.
 
 ## License
 
 MIT
-
-
-## Benchmarking
-
-Nexus includes a reproducible HTTP search benchmark. Start the target deployment, then run:
-
-```bash
-PYTHONPATH=backend python3 scripts/benchmark_http.py   --base-url http://127.0.0.1:8000   --requests 200   --concurrency 1,5,10,20,40   --output benchmark-results.json
-```
-
-The report records throughput, p50/p95/p99 client-observed latency, HTTP 200 success count, deliberate HTTP 503 load-shedding count, and unexpected errors at each concurrency level. Benchmark numbers are environment-specific and should always be reported with the tested request count, concurrency, corpus, and deployment context.
