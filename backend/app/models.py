@@ -70,6 +70,15 @@ class Citation(BaseModel):
     document_id: str
 
 
+class EvidenceSummary(BaseModel):
+    decision: Literal["answer", "answer_with_caveat", "abstain"]
+    confidence: float = Field(ge=0.0, le=1.0)
+    coverage: float = Field(ge=0.0, le=1.0)
+    authority: float = Field(ge=0.0, le=1.0)
+    independent_sources: int = Field(ge=0)
+    reasons: list[str] = Field(default_factory=list)
+
+
 class AskResponse(BaseModel):
     query: str
     answer: str
@@ -78,6 +87,7 @@ class AskResponse(BaseModel):
     generation_ms: float
     model: str
     grounded: bool
+    evidence: EvidenceSummary | None = None
     plan: SearchPlan | None = None
 
 
