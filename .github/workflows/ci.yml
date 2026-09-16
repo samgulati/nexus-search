@@ -74,6 +74,19 @@ jobs:
           kubectl kustomize k8s/base > /tmp/nexus-k8s-verify.yaml
           diff -u /tmp/nexus-k8s.yaml /tmp/nexus-k8s-verify.yaml
 
+
+  kubernetes-e2e:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: helm/kind-action@v1
+        with:
+          cluster_name: nexus-e2e
+      - name: Delete bootstrap cluster
+        run: kind delete cluster --name nexus-e2e
+      - name: Run Kubernetes end-to-end test
+        run: bash scripts/k8s_e2e.sh
+
   frontend-build:
     runs-on: ubuntu-latest
     steps:
