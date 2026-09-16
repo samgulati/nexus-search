@@ -261,10 +261,13 @@ async def ask(request: AskRequest) -> AskResponse:
         capacity=request_gate.capacity,
         cluster_service=cluster_service,
     )
+    # Ask retrieves a wider candidate set than it ultimately cites. The evidence
+    # layer then reranks and removes weak query matches before synthesis.
+    candidate_k = min(25, max(20, request.top_k * 4))
     search_response = await cluster_service.search(
         request.query,
         mode=plan.selected_mode,
-        top_k=request.top_k,
+        top_k=candidate_k,
     )
     plan = plan.model_copy(update={"healthy_shards": cluster_service.last_healthy_shards})
     search_response = search_response.model_copy(update={"plan": plan})
@@ -272,6 +275,7 @@ async def ask(request: AskRequest) -> AskResponse:
         request.query,
         search_response,
         force_extractive=not plan.generation_allowed,
+        result_limit=request.top_k,
     )
 
 

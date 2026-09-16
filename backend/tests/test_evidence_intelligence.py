@@ -49,7 +49,10 @@ def test_high_authority_evidence_can_answer():
     ])
     ev = svc._evaluate_evidence("what does HTTP 503 service unavailable mean", s)
     assert ev.decision in {"answer", "answer_with_caveat"}
-    assert ev.authority >= 0.95
+    # Phase 11C-2 uses topic-specific authority, so the unrelated Kubernetes
+    # source should no longer keep the average authority near 1.0.
+    assert ev.authority >= 0.75
+    assert ev.relevance >= 0.40
     assert ev.independent_sources == 2
 
 

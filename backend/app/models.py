@@ -75,7 +75,10 @@ class EvidenceSummary(BaseModel):
     confidence: float = Field(ge=0.0, le=1.0)
     coverage: float = Field(ge=0.0, le=1.0)
     authority: float = Field(ge=0.0, le=1.0)
+    relevance: float = Field(default=0.0, ge=0.0, le=1.0)
     independent_sources: int = Field(ge=0)
+    relevant_evidence_count: int = Field(default=0, ge=0)
+    discarded_results: int = Field(default=0, ge=0)
     reasons: list[str] = Field(default_factory=list)
 
 
