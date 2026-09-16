@@ -173,3 +173,14 @@ The distributed query path is now implemented. The next month of work is deliber
 ## License
 
 MIT
+
+
+## Benchmarking
+
+Nexus includes a reproducible HTTP search benchmark. Start the target deployment, then run:
+
+```bash
+PYTHONPATH=backend python3 scripts/benchmark_http.py   --base-url http://127.0.0.1:8000   --requests 200   --concurrency 1,5,10,20,40   --output benchmark-results.json
+```
+
+The report records throughput, p50/p95/p99 client-observed latency, HTTP 200 success count, deliberate HTTP 503 load-shedding count, and unexpected errors at each concurrency level. Benchmark numbers are environment-specific and should always be reported with the tested request count, concurrency, corpus, and deployment context.
