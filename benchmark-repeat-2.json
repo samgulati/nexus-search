@@ -1,0 +1,82 @@
+{
+  "benchmark": "nexus-http-search",
+  "base_url": "https://nexus-search-production.up.railway.app",
+  "query": "distributed search",
+  "requests_per_level": 500,
+  "warmup_requests": 10,
+  "concurrency_levels": [
+    40,
+    60,
+    80,
+    100
+  ],
+  "generated_unix_seconds": 1789540987.185024,
+  "results": [
+    {
+      "concurrency": 40,
+      "requests": 500,
+      "duration_seconds": 7.2535,
+      "throughput_rps": 68.93,
+      "success_count": 500,
+      "rejected_count": 0,
+      "error_count": 0,
+      "success_rate": 100.0,
+      "p50_ms": 546.55,
+      "p95_ms": 854.84,
+      "p99_ms": 1017.05,
+      "avg_ms": 548.4,
+      "max_ms": 1112.77
+    },
+    {
+      "concurrency": 60,
+      "requests": 500,
+      "duration_seconds": 6.0639,
+      "throughput_rps": 82.45,
+      "success_count": 500,
+      "rejected_count": 0,
+      "error_count": 0,
+      "success_rate": 100.0,
+      "p50_ms": 673.09,
+      "p95_ms": 1302.25,
+      "p99_ms": 1534.13,
+      "avg_ms": 699.11,
+      "max_ms": 1586.83
+    },
+    {
+      "concurrency": 80,
+      "requests": 500,
+      "duration_seconds": 7.0028,
+      "throughput_rps": 71.4,
+      "success_count": 500,
+      "rejected_count": 0,
+      "error_count": 0,
+      "success_rate": 100.0,
+      "p50_ms": 943.17,
+      "p95_ms": 2118.69,
+      "p99_ms": 3221.01,
+      "avg_ms": 1055.86,
+      "max_ms": 4298.96
+    },
+    {
+      "concurrency": 100,
+      "requests": 500,
+      "duration_seconds": 7.5283,
+      "throughput_rps": 66.42,
+      "success_count": 500,
+      "rejected_count": 0,
+      "error_count": 0,
+      "success_rate": 100.0,
+      "p50_ms": 1187.93,
+      "p95_ms": 2578.49,
+      "p99_ms": 2849.47,
+      "avg_ms": 1332.22,
+      "max_ms": 2986.59
+    }
+  ],
+  "notes": [
+    "Throughput is total completed HTTP requests divided by wall-clock duration.",
+    "Latency includes client-observed network and server time.",
+    "HTTP 503 responses are tracked separately as deliberate load shedding.",
+    "Results are environment-specific and should not be generalized beyond the recorded run."
+  ]
+}

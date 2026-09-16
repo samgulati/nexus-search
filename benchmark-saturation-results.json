@@ -1,0 +1,66 @@
+{
+  "benchmark": "nexus-http-search",
+  "base_url": "https://nexus-search-production.up.railway.app",
+  "query": "distributed search",
+  "requests_per_level": 500,
+  "warmup_requests": 10,
+  "concurrency_levels": [
+    60,
+    80,
+    100
+  ],
+  "generated_unix_seconds": 1789540816.1352131,
+  "results": [
+    {
+      "concurrency": 60,
+      "requests": 500,
+      "duration_seconds": 5.4831,
+      "throughput_rps": 91.19,
+      "success_count": 500,
+      "rejected_count": 0,
+      "error_count": 0,
+      "success_rate": 100.0,
+      "p50_ms": 589.13,
+      "p95_ms": 999.32,
+      "p99_ms": 1206.1,
+      "avg_ms": 608.7,
+      "max_ms": 1370.82
+    },
+    {
+      "concurrency": 80,
+      "requests": 500,
+      "duration_seconds": 7.7161,
+      "throughput_rps": 64.8,
+      "success_count": 500,
+      "rejected_count": 0,
+      "error_count": 0,
+      "success_rate": 100.0,
+      "p50_ms": 990.36,
+      "p95_ms": 2660.2,
+      "p99_ms": 3306.35,
+      "avg_ms": 1136.8,
+      "max_ms": 4825.3
+    },
+    {
+      "concurrency": 100,
+      "requests": 500,
+      "duration_seconds": 5.864,
+      "throughput_rps": 85.27,
+      "success_count": 500,
+      "rejected_count": 0,
+      "error_count": 0,
+      "success_rate": 100.0,
+      "p50_ms": 1044.48,
+      "p95_ms": 1791.45,
+      "p99_ms": 2260.37,
+      "avg_ms": 1075.82,
+      "max_ms": 2310.86
+    }
+  ],
+  "notes": [
+    "Throughput is total completed HTTP requests divided by wall-clock duration.",
+    "Latency includes client-observed network and server time.",
+    "HTTP 503 responses are tracked separately as deliberate load shedding.",
+    "Results are environment-specific and should not be generalized beyond the recorded run."
+  ]
+}

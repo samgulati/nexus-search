@@ -1,0 +1,64 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: nexus-coordinator
+  namespace: nexus
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: nexus-coordinator
+  template:
+    metadata:
+      labels:
+        app: nexus-coordinator
+        nexus-role: coordinator
+    spec:
+      containers:
+        - name: nexus
+          image: nexus-search:local
+          imagePullPolicy: IfNotPresent
+          ports:
+            - containerPort: 8000
+          envFrom:
+            - configMapRef:
+                name: nexus-config
+            - secretRef:
+                name: nexus-secrets
+          env:
+            - name: SERVICE_ROLE
+              value: coordinator
+            - name: SHARD_URLS
+              value: "0=http://nexus-shard-0:8000,1=http://nexus-shard-1:8000,2=http://nexus-shard-2:8000"
+          readinessProbe:
+            httpGet:
+              path: /api/ready
+              port: 8000
+            initialDelaySeconds: 3
+            periodSeconds: 5
+            failureThreshold: 3
+          livenessProbe:
+            httpGet:
+              path: /api/health
+              port: 8000
+            initialDelaySeconds: 5
+            periodSeconds: 10
+          resources:
+            requests:
+              cpu: 150m
+              memory: 192Mi
+            limits:
+              cpu: "1"
+              memory: 768Mi
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: nexus-coordinator
+  namespace: nexus
+spec:
+  selector:
+    app: nexus-coordinator
+  ports:
+    - port: 80
+      targetPort: 8000

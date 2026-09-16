@@ -60,6 +60,17 @@ jobs:
       - name: Run load-shedding and readiness integration test
         run: PYTHONPATH=backend python scripts/load_shedding_e2e.py
 
+
+  kubernetes-manifests:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: azure/setup-kubectl@v4
+      - name: Render Kubernetes manifests
+        run: kubectl kustomize k8s/base > /tmp/nexus-k8s.yaml
+      - name: Validate Kubernetes resources client-side
+        run: kubectl apply --dry-run=client -f /tmp/nexus-k8s.yaml
+
   frontend-build:
     runs-on: ubuntu-latest
     steps:

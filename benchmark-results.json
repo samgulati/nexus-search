@@ -1,0 +1,98 @@
+{
+  "benchmark": "nexus-http-search",
+  "base_url": "https://nexus-search-production.up.railway.app",
+  "query": "distributed search",
+  "requests_per_level": 200,
+  "warmup_requests": 10,
+  "concurrency_levels": [
+    1,
+    5,
+    10,
+    20,
+    40
+  ],
+  "generated_unix_seconds": 1789540497.257637,
+  "results": [
+    {
+      "concurrency": 1,
+      "requests": 200,
+      "duration_seconds": 63.5092,
+      "throughput_rps": 3.15,
+      "success_count": 200,
+      "rejected_count": 0,
+      "error_count": 0,
+      "success_rate": 100.0,
+      "p50_ms": 280.91,
+      "p95_ms": 456.16,
+      "p99_ms": 718.79,
+      "avg_ms": 317.5,
+      "max_ms": 751.83
+    },
+    {
+      "concurrency": 5,
+      "requests": 200,
+      "duration_seconds": 12.141,
+      "throughput_rps": 16.47,
+      "success_count": 200,
+      "rejected_count": 0,
+      "error_count": 0,
+      "success_rate": 100.0,
+      "p50_ms": 282.99,
+      "p95_ms": 415.88,
+      "p99_ms": 567.31,
+      "avg_ms": 301.89,
+      "max_ms": 587.28
+    },
+    {
+      "concurrency": 10,
+      "requests": 200,
+      "duration_seconds": 7.2785,
+      "throughput_rps": 27.48,
+      "success_count": 200,
+      "rejected_count": 0,
+      "error_count": 0,
+      "success_rate": 100.0,
+      "p50_ms": 320.43,
+      "p95_ms": 649.25,
+      "p99_ms": 672.08,
+      "avg_ms": 353.93,
+      "max_ms": 681.89
+    },
+    {
+      "concurrency": 20,
+      "requests": 200,
+      "duration_seconds": 4.0924,
+      "throughput_rps": 48.87,
+      "success_count": 200,
+      "rejected_count": 0,
+      "error_count": 0,
+      "success_rate": 100.0,
+      "p50_ms": 340.35,
+      "p95_ms": 649.81,
+      "p99_ms": 1018.7,
+      "avg_ms": 388.03,
+      "max_ms": 1242.7
+    },
+    {
+      "concurrency": 40,
+      "requests": 200,
+      "duration_seconds": 3.2695,
+      "throughput_rps": 61.17,
+      "success_count": 200,
+      "rejected_count": 0,
+      "error_count": 0,
+      "success_rate": 100.0,
+      "p50_ms": 580.29,
+      "p95_ms": 813.51,
+      "p99_ms": 1120.78,
+      "avg_ms": 593.1,
+      "max_ms": 1457.07
+    }
+  ],
+  "notes": [
+    "Throughput is total completed HTTP requests divided by wall-clock duration.",
+    "Latency includes client-observed network and server time.",
+    "HTTP 503 responses are tracked separately as deliberate load shedding.",
+    "Results are environment-specific and should not be generalized beyond the recorded run."
+  ]
+}

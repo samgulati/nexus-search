@@ -1,0 +1,64 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: nexus-shard-2
+  namespace: nexus
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: nexus-shard-2
+  template:
+    metadata:
+      labels:
+        app: nexus-shard-2
+        nexus-role: shard
+        nexus-shard-id: "2"
+    spec:
+      containers:
+        - name: nexus
+          image: nexus-search:local
+          imagePullPolicy: IfNotPresent
+          ports:
+            - containerPort: 8000
+          envFrom:
+            - configMapRef:
+                name: nexus-config
+            - secretRef:
+                name: nexus-secrets
+          env:
+            - name: SERVICE_ROLE
+              value: shard
+            - name: SHARD_ID
+              value: "2"
+          readinessProbe:
+            httpGet:
+              path: /api/ready
+              port: 8000
+            initialDelaySeconds: 2
+            periodSeconds: 5
+          livenessProbe:
+            httpGet:
+              path: /api/health
+              port: 8000
+            initialDelaySeconds: 5
+            periodSeconds: 10
+          resources:
+            requests:
+              cpu: 100m
+              memory: 128Mi
+            limits:
+              cpu: "1"
+              memory: 512Mi
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: nexus-shard-2
+  namespace: nexus
+spec:
+  selector:
+    app: nexus-shard-2
+  ports:
+    - port: 8000
+      targetPort: 8000
