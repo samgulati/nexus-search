@@ -94,6 +94,11 @@ class CrawlResponse(BaseModel):
     skipped: int
     failed: int
     took_ms: float
+    fetched: int = 0
+    html_pages: int = 0
+    content_pages: int = 0
+    empty_pages: int = 0
+    chunks_extracted: int = 0
 
 
 class StatsResponse(BaseModel):

@@ -200,6 +200,10 @@ class Crawler:
         items: list[DocumentIn] = []
         skipped = 0
         failed = 0
+        fetched = 0
+        html_pages = 0
+        content_pages = 0
+        empty_pages = 0
         allowed_domains = {urlparse(str(seed)).netloc.lower() for seed in request.seeds}
 
         headers = {"User-Agent": settings.crawl_user_agent}
@@ -224,11 +228,13 @@ class Crawler:
                         continue
 
                     response = await client.get(url)
+                    fetched += 1
                     final_url = canonicalize_url(str(response.url))
                     content_type = response.headers.get("content-type", "").lower()
                     if response.status_code >= 400 or "text/html" not in content_type or not final_url:
                         skipped += 1
                         continue
+                    html_pages += 1
 
                     final_host = urlparse(final_url).hostname
                     if not final_host or not _safe_public_host(final_host):
@@ -240,7 +246,11 @@ class Crawler:
 
                     default_title = parsed.path.strip("/") or parsed.netloc
                     page_docs = extract_page_documents(response.text, final_url, default_title)
-                    items.extend(page_docs)
+                    if page_docs:
+                        content_pages += 1
+                        items.extend(page_docs)
+                    else:
+                        empty_pages += 1
 
                     if depth < request.max_depth:
                         soup = BeautifulSoup(response.text, "html.parser")
@@ -270,6 +280,11 @@ class Crawler:
             skipped=skipped + duplicates,
             failed=failed,
             took_ms=round((time.perf_counter() - t0) * 1000, 2),
+            fetched=fetched,
+            html_pages=html_pages,
+            content_pages=content_pages,
+            empty_pages=empty_pages,
+            chunks_extracted=len(items),
         )
 
 

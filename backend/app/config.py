@@ -26,6 +26,11 @@ class Settings:
     cluster_token: str = os.getenv("CLUSTER_TOKEN", "")
     shard_timeout_seconds: float = float(os.getenv("SHARD_TIMEOUT_SECONDS", "5"))
     shard_max_concurrency: int = int(os.getenv("SHARD_MAX_CONCURRENCY", "32"))
+
+    # Reliable distributed ingestion.
+    ingest_batch_size: int = max(1, min(100, int(os.getenv("INGEST_BATCH_SIZE", "25"))))
+    ingest_batch_timeout_seconds: float = float(os.getenv("INGEST_BATCH_TIMEOUT_SECONDS", "20"))
+    ingest_batch_retries: int = max(0, int(os.getenv("INGEST_BATCH_RETRIES", "2")))
     circuit_failure_threshold: int = int(os.getenv("CIRCUIT_FAILURE_THRESHOLD", "3"))
     circuit_recovery_seconds: float = float(os.getenv("CIRCUIT_RECOVERY_SECONDS", "15"))
     max_inflight_requests: int = int(os.getenv("MAX_INFLIGHT_REQUESTS", "64"))

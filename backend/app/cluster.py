@@ -269,6 +269,44 @@ class ClusterService:
             response.raise_for_status()
             return Document.model_validate(response.json())
 
+    async def _index_target_batches(
+        self,
+        client: httpx.AsyncClient,
+        target: ShardTarget,
+        items: list[DocumentIn],
+    ) -> tuple[int, int]:
+        added = 0
+        skipped = 0
+        batch_size = settings.ingest_batch_size
+
+        for start in range(0, len(items), batch_size):
+            batch = items[start:start + batch_size]
+            payload = {"documents": [item.model_dump(mode="json") for item in batch]}
+            last_error: Exception | None = None
+
+            for attempt in range(settings.ingest_batch_retries + 1):
+                try:
+                    response = await client.post(
+                        f"{target.url}/internal/index/batch",
+                        json=payload,
+                        headers=self._cluster_headers(),
+                    )
+                    response.raise_for_status()
+                    body = response.json()
+                    added += int(body.get("added", 0))
+                    skipped += int(body.get("skipped", 0))
+                    last_error = None
+                    break
+                except Exception as exc:
+                    last_error = exc
+                    if attempt < settings.ingest_batch_retries:
+                        await asyncio.sleep(min(0.25 * (2 ** attempt), 1.0))
+
+            if last_error is not None:
+                skipped += len(batch)
+
+        return added, skipped
+
     async def add_many(self, items: list[DocumentIn]) -> tuple[int, int]:
         if not items:
             return 0, 0
@@ -280,34 +318,19 @@ class ClusterService:
         for item in items:
             groups[ring.pick(self.key_for_document(item))].append(item)
 
-        async with httpx.AsyncClient(timeout=max(settings.shard_timeout_seconds, 30.0)) as client:
-            tasks = []
-            for target in self.shard_targets:
-                batch = groups[target.shard_id]
-                if not batch:
-                    continue
-                tasks.append(
-                    client.post(
-                        f"{target.url}/internal/index/batch",
-                        json={"documents": [item.model_dump(mode="json") for item in batch]},
-                        headers=self._cluster_headers(),
-                    )
-                )
-            responses = await asyncio.gather(*tasks, return_exceptions=True)
+        timeout = httpx.Timeout(settings.ingest_batch_timeout_seconds)
+        async with httpx.AsyncClient(timeout=timeout) as client:
+            tasks = [
+                self._index_target_batches(client, target, groups[target.shard_id])
+                for target in self.shard_targets
+                if groups[target.shard_id]
+            ]
+            results = await asyncio.gather(*tasks)
 
-        added = skipped = 0
-        for response in responses:
-            if isinstance(response, Exception):
-                skipped += 1
-                continue
-            try:
-                response.raise_for_status()
-                body = response.json()
-                added += int(body.get("added", 0))
-                skipped += int(body.get("skipped", 0))
-            except Exception:
-                skipped += 1
-        return added, skipped
+        return (
+            sum(result[0] for result in results),
+            sum(result[1] for result in results),
+        )
 
     async def get_stats(self) -> StatsResponse:
         if not self.is_coordinator or not self.shard_targets:
