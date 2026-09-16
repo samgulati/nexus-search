@@ -11,7 +11,14 @@ import httpx
 
 from .config import settings
 from .models import Document, DocumentIn, SearchResponse, SearchResult, StatsResponse
-from .observability import inject_trace_headers, observe_shard_call, tracer
+from .observability import (
+    CIRCUIT_EVENTS,
+    SHARD_INFLIGHT,
+    inject_trace_headers,
+    observe_shard_call,
+    tracer,
+)
+from .resilience import CircuitBreaker
 from .services.index_service import index_service
 from .search.tokenize import tokenize
 
@@ -62,6 +69,14 @@ class ClusterService:
         self.search_latencies: deque[float] = deque(maxlen=1000)
         self.searches = 0
         self.started_at = time.perf_counter()
+        self._shard_semaphore = asyncio.Semaphore(max(1, settings.shard_max_concurrency))
+        self._circuits = {
+            target.shard_id: CircuitBreaker(
+                settings.circuit_failure_threshold,
+                settings.circuit_recovery_seconds,
+            )
+            for target in self.shard_targets
+        }
 
     @property
     def is_coordinator(self) -> bool:
@@ -132,34 +147,40 @@ class ClusterService:
         top_k: int,
     ) -> SearchResponse | None:
         started = time.perf_counter()
-        with tracer().start_as_current_span("nexus.shard.search") as span:
-            span.set_attribute("nexus.shard_id", target.shard_id)
+        circuit = self._circuits[target.shard_id]
+
+        if not await circuit.allow_request():
+            CIRCUIT_EVENTS.labels(target.shard_id, "rejected").inc()
+            observe_shard_call("search", target.shard_id, "circuit_open", time.perf_counter() - started)
+            return None
+
+        async with self._shard_semaphore:
+            SHARD_INFLIGHT.inc()
             try:
-                response = await client.get(
-                    f"{target.url}/internal/search",
-                    params={"q": query, "mode": mode, "top_k": top_k},
-                    headers=self._cluster_headers(),
-                )
-                response.raise_for_status()
-                parsed = SearchResponse.model_validate(response.json())
-                for result in parsed.results:
-                    result.shard_id = target.shard_id
-                observe_shard_call(
-                    "search",
-                    target.shard_id,
-                    "success",
-                    time.perf_counter() - started,
-                )
-                return parsed
-            except Exception as exc:
-                span.record_exception(exc)
-                observe_shard_call(
-                    "search",
-                    target.shard_id,
-                    "error",
-                    time.perf_counter() - started,
-                )
-                return None
+                with tracer().start_as_current_span("nexus.shard.search") as span:
+                    span.set_attribute("nexus.shard_id", target.shard_id)
+                    try:
+                        response = await client.get(
+                            f"{target.url}/internal/search",
+                            params={"q": query, "mode": mode, "top_k": top_k},
+                            headers=self._cluster_headers(),
+                        )
+                        response.raise_for_status()
+                        parsed = SearchResponse.model_validate(response.json())
+                        for result in parsed.results:
+                            result.shard_id = target.shard_id
+                        await circuit.record_success()
+                        CIRCUIT_EVENTS.labels(target.shard_id, "success").inc()
+                        observe_shard_call("search", target.shard_id, "success", time.perf_counter() - started)
+                        return parsed
+                    except Exception as exc:
+                        span.record_exception(exc)
+                        await circuit.record_failure()
+                        CIRCUIT_EVENTS.labels(target.shard_id, "failure").inc()
+                        observe_shard_call("search", target.shard_id, "error", time.perf_counter() - started)
+                        return None
+            finally:
+                SHARD_INFLIGHT.dec()
 
     @staticmethod
     def _title_overlap(query: str, title: str) -> float:

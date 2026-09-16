@@ -25,6 +25,9 @@ class Settings:
     shard_urls: str = os.getenv("SHARD_URLS", "")
     cluster_token: str = os.getenv("CLUSTER_TOKEN", "")
     shard_timeout_seconds: float = float(os.getenv("SHARD_TIMEOUT_SECONDS", "5"))
+    shard_max_concurrency: int = int(os.getenv("SHARD_MAX_CONCURRENCY", "32"))
+    circuit_failure_threshold: int = int(os.getenv("CIRCUIT_FAILURE_THRESHOLD", "3"))
+    circuit_recovery_seconds: float = float(os.getenv("CIRCUIT_RECOVERY_SECONDS", "15"))
 
     # Phase 3b: asynchronous indexing through Kafka / Redpanda.
     kafka_bootstrap_servers: str = os.getenv("KAFKA_BOOTSTRAP_SERVERS", "")

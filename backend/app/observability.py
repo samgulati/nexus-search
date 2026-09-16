@@ -55,6 +55,15 @@ KAFKA_LAG = Gauge(
     "Approximate Kafka consumer lag per topic partition.",
     ("topic", "partition"),
 )
+CIRCUIT_EVENTS = Counter(
+    "nexus_circuit_breaker_events_total",
+    "Circuit-breaker events by shard and outcome.",
+    ("shard_id", "event"),
+)
+SHARD_INFLIGHT = Gauge(
+    "nexus_shard_inflight_requests",
+    "Current coordinator requests executing against shards.",
+)
 
 _tracing_configured = False
 _worker_metrics_started = False
