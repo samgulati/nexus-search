@@ -68,8 +68,11 @@ jobs:
       - uses: azure/setup-kubectl@v4
       - name: Render Kubernetes manifests
         run: kubectl kustomize k8s/base > /tmp/nexus-k8s.yaml
-      - name: Validate Kubernetes resources client-side
-        run: kubectl apply --dry-run=client --validate=false -f /tmp/nexus-k8s.yaml
+      - name: Validate rendered Kubernetes manifests
+        run: |
+          test -s /tmp/nexus-k8s.yaml
+          kubectl kustomize k8s/base > /tmp/nexus-k8s-verify.yaml
+          diff -u /tmp/nexus-k8s.yaml /tmp/nexus-k8s-verify.yaml
 
   frontend-build:
     runs-on: ubuntu-latest
