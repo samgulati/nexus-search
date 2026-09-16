@@ -118,5 +118,329 @@
     "url": "https://nlp.stanford.edu/IR-book/html/htmledition/the-url-frontier-1.html",
     "source": "demo-corpus",
     "text": "A web crawler frontier manages discovered URLs that have not yet been fetched. A production crawler must balance freshness, priority, politeness, and per-host rate limits. URL normalization and canonicalization reduce duplicate work, while content hashes detect pages with identical text. Robots.txt rules should be respected. Large crawlers partition frontier work across workers and persist state so failures do not lose progress."
+  },
+  {
+    "title": "HTTP 503 Service Unavailable and Retry-After",
+    "url": "https://developer.mozilla.org/en-US/docs/Web/HTTP/Status/503",
+    "source": "expanded-demo-corpus",
+    "text": "HTTP 503 Service Unavailable means a server is temporarily unable to handle a request, often because of overload or maintenance. A server can include Retry-After to tell clients when to retry. Good clients use bounded retries with exponential backoff and jitter instead of retrying immediately. Returning a fast 503 can be a deliberate load-shedding strategy that protects the service from queue growth and cascading failure."
+  },
+  {
+    "title": "HTTP 429 Too Many Requests",
+    "url": "https://developer.mozilla.org/en-US/docs/Web/HTTP/Status/429",
+    "source": "expanded-demo-corpus",
+    "text": "HTTP 429 Too Many Requests indicates that a client exceeded a rate limit. APIs may return Retry-After or rate-limit headers so clients can slow down. Token bucket, leaky bucket, fixed window, and sliding window are common limiting strategies. Clients should back off rather than immediately retrying every rejected request."
+  },
+  {
+    "title": "Cursor and Keyset Pagination",
+    "url": "https://www.postgresql.org/docs/current/queries-limit.html",
+    "source": "expanded-demo-corpus",
+    "text": "Cursor or keyset pagination requests records after a stable ordering key such as created_at plus id. It avoids the increasing scan cost of large OFFSET values and is more stable when new records are inserted while a user is paging. Cursor pagination is common in feeds and APIs that need reliable traversal of large changing datasets."
+  },
+  {
+    "title": "CAP Theorem",
+    "url": "https://en.wikipedia.org/wiki/CAP_theorem",
+    "source": "expanded-demo-corpus",
+    "text": "The CAP theorem says that when a network partition occurs, a distributed data system must trade off between preserving a single consistent view and remaining available to every request. The tradeoff is specifically about partition scenarios, not a permanent choice to keep only two properties under normal operation."
+  },
+  {
+    "title": "Eventual Consistency",
+    "url": "https://www.allthingsdistributed.com/2008/12/eventually_consistent.html",
+    "source": "expanded-demo-corpus",
+    "text": "Eventual consistency allows replicas to temporarily disagree after a write and converge later when updates stop. It can improve availability and latency but applications must tolerate stale reads. Systems may add read-your-writes behavior, versioning, conflict resolution, or quorum techniques to improve user-visible consistency."
+  },
+  {
+    "title": "Strong Consistency and Linearizability",
+    "url": "https://jepsen.io/consistency/models/linearizable",
+    "source": "expanded-demo-corpus",
+    "text": "Linearizability makes each operation appear to take effect atomically at one point between invocation and completion. It simplifies reasoning about concurrent clients but requires coordination that can increase latency or reduce availability during failures. Not every operation needs this strongest model."
+  },
+  {
+    "title": "Consistent Hashing",
+    "url": "https://en.wikipedia.org/wiki/Consistent_hashing",
+    "source": "expanded-demo-corpus",
+    "text": "Consistent hashing maps keys and nodes to a logical ring so adding or removing a node moves only a fraction of keys. Virtual nodes improve balance. It is widely used for partitioned caches and storage, although rendezvous hashing can offer similar remapping properties with a simpler scoring model."
+  },
+  {
+    "title": "Rendezvous Hashing",
+    "url": "https://en.wikipedia.org/wiki/Rendezvous_hashing",
+    "source": "expanded-demo-corpus",
+    "text": "Rendezvous hashing, also called highest-random-weight hashing, scores each candidate node for a key and selects the highest score. It is deterministic, requires no ring, and remaps only keys whose winning node changes when membership changes. Nexus uses rendezvous hashing for shard placement."
+  },
+  {
+    "title": "Raft Consensus",
+    "url": "https://raft.github.io/",
+    "source": "expanded-demo-corpus",
+    "text": "Raft is a consensus algorithm that replicates a log across servers. A leader receives commands and replicates log entries to followers. Entries become committed after majority replication under Raft safety rules. Raft separates leader election, log replication, and safety so the protocol is easier to understand and implement."
+  },
+  {
+    "title": "Distributed Locks and Fencing Tokens",
+    "url": "https://redis.io/docs/latest/develop/use/patterns/distributed-locks/",
+    "source": "expanded-demo-corpus",
+    "text": "Distributed locks coordinate mutually exclusive work across processes. Correctness depends on leases, ownership, failure handling, and stale lock holders. Fencing tokens are often safer than relying only on timeout expiration because downstream systems can reject operations from an older lock owner."
+  },
+  {
+    "title": "Kafka Consumer Groups",
+    "url": "https://kafka.apache.org/documentation/",
+    "source": "expanded-demo-corpus",
+    "text": "Kafka consumer groups let multiple consumers cooperatively process a topic. Each partition is assigned to at most one consumer in a group at a time, so partition count limits the group's parallelism. Membership changes cause rebalancing, while separate consumer groups maintain independent offsets."
+  },
+  {
+    "title": "Kafka Offsets and Duplicate Processing",
+    "url": "https://kafka.apache.org/documentation/",
+    "source": "expanded-demo-corpus",
+    "text": "A Kafka consumer offset records progress within a partition. If a consumer processes a record and crashes before committing the offset, the same record may be delivered again. This creates at-least-once behavior, so consumers should be idempotent or deduplicate events when duplicate side effects are harmful."
+  },
+  {
+    "title": "Kafka Partitions and Ordering",
+    "url": "https://kafka.apache.org/documentation/",
+    "source": "expanded-demo-corpus",
+    "text": "Kafka guarantees record ordering within a partition, not across an entire topic. Producers can use a message key so related records consistently map to the same partition and preserve per-key order. More partitions increase parallelism but also increase metadata, rebalance, and coordination cost."
+  },
+  {
+    "title": "Kafka Dead Letter Queue",
+    "url": "https://www.confluent.io/blog/kafka-connect-deep-dive-error-handling-dead-letter-queues/",
+    "source": "expanded-demo-corpus",
+    "text": "A dead-letter queue stores messages that still fail after bounded retries. DLQs prevent poison messages from blocking a processing pipeline and preserve failed records for inspection or replay. Useful metadata includes failure reason, attempt count, source topic and partition, and correlation identifiers."
+  },
+  {
+    "title": "Backpressure and Consumer Lag",
+    "url": "https://kafka.apache.org/documentation/",
+    "source": "expanded-demo-corpus",
+    "text": "Backpressure occurs when downstream processing cannot keep up with incoming work. Kafka absorbs temporary imbalance through retained records while consumer lag measures backlog. Operators can scale consumers up to partition limits, optimize handlers, batch work, or throttle producers before backlog becomes unsafe."
+  },
+  {
+    "title": "Timeouts, Retries, Backoff and Jitter",
+    "url": "https://aws.amazon.com/builders-library/timeouts-retries-and-backoff-with-jitter/",
+    "source": "expanded-demo-corpus",
+    "text": "Timeouts bound how long a caller waits for a dependency. Retries can recover transient failures but can amplify overload if they are immediate or unlimited. Exponential backoff increases delay between attempts and jitter randomizes timing so many clients do not retry together. Retry budgets and idempotency make retry behavior safer."
+  },
+  {
+    "title": "Bulkhead Pattern and Bounded Concurrency",
+    "url": "https://learn.microsoft.com/en-us/azure/architecture/patterns/bulkhead",
+    "source": "expanded-demo-corpus",
+    "text": "The bulkhead pattern isolates resources so one failing workload cannot consume all capacity. Separate pools, queues, semaphores, or worker groups can constrain concurrency for a dependency. Bounded concurrency limits blast radius and is often paired with timeouts and circuit breakers."
+  },
+  {
+    "title": "Load Shedding",
+    "url": "https://aws.amazon.com/builders-library/using-load-shedding-to-avoid-overload/",
+    "source": "expanded-demo-corpus",
+    "text": "Load shedding rejects excess requests when a service approaches capacity. A fast 503 can be healthier than admitting every request and allowing queues and latency to grow until the entire service fails. Admission limits, prioritization, Retry-After guidance, and monitoring are common load-shedding tools."
+  },
+  {
+    "title": "Liveness and Readiness Probes",
+    "url": "https://kubernetes.io/docs/concepts/configuration/liveness-readiness-startup-probes/",
+    "source": "expanded-demo-corpus",
+    "text": "Liveness asks whether a process should be restarted, while readiness asks whether it should currently receive traffic. A process can be alive but not ready because a required dependency is unavailable. Separating the probes prevents traffic from reaching unusable instances without causing unnecessary restart loops."
+  },
+  {
+    "title": "Graceful Degradation",
+    "url": "https://learn.microsoft.com/en-us/azure/architecture/framework/resiliency/reliability-patterns",
+    "source": "expanded-demo-corpus",
+    "text": "Graceful degradation keeps a reduced but useful service available when resources or dependencies fail. Examples include serving partial results, using a cheaper retrieval path, disabling optional enrichment, or falling back from LLM generation to extractive answers. Fallbacks should be explicit, observable, and safe."
+  },
+  {
+    "title": "SLOs, SLIs and Error Budgets",
+    "url": "https://sre.google/sre-book/service-level-objectives/",
+    "source": "expanded-demo-corpus",
+    "text": "A service-level indicator measures behavior such as availability or latency. A service-level objective sets a target, such as p95 latency below a threshold. The error budget is the unreliability allowed by that objective and can guide release velocity and reliability investment."
+  },
+  {
+    "title": "Database Replication vs Sharding",
+    "url": "https://www.postgresql.org/docs/current/warm-standby.html",
+    "source": "expanded-demo-corpus",
+    "text": "Replication keeps copies of the same data on multiple nodes for availability or read scaling. Sharding partitions different records across nodes to increase storage and write capacity. Replication can produce stale reads depending on synchronization, while sharding adds cross-shard query and rebalancing complexity."
+  },
+  {
+    "title": "Database Transactions and ACID",
+    "url": "https://www.postgresql.org/docs/current/tutorial-transactions.html",
+    "source": "expanded-demo-corpus",
+    "text": "ACID transactions provide atomicity, consistency, isolation, and durability. Atomicity means all changes commit or none do. Isolation controls how concurrent transactions interact, while durability means committed state survives failures according to the database's persistence guarantees."
+  },
+  {
+    "title": "PostgreSQL MVCC and Isolation",
+    "url": "https://www.postgresql.org/docs/current/mvcc.html",
+    "source": "expanded-demo-corpus",
+    "text": "PostgreSQL uses multi-version concurrency control so readers can see consistent snapshots while writers create new row versions. Isolation levels control which anomalies transactions can observe. Serializable provides the strongest built-in isolation and may abort conflicting transactions that applications must retry."
+  },
+  {
+    "title": "Database Connection Pooling",
+    "url": "https://www.postgresql.org/docs/current/runtime-config-connection.html",
+    "source": "expanded-demo-corpus",
+    "text": "Connection pools reuse a bounded number of database connections instead of opening one for every request. Pooling reduces connection setup overhead and protects the database from excessive concurrent sessions. Pool size should reflect database capacity, not simply the application's maximum request concurrency."
+  },
+  {
+    "title": "Cache-Aside Pattern",
+    "url": "https://learn.microsoft.com/en-us/azure/architecture/patterns/cache-aside",
+    "source": "expanded-demo-corpus",
+    "text": "In cache-aside, the application checks cache first and loads missing data from the primary store before populating the cache. Writes normally update the database and invalidate or refresh the cached value. The pattern is simple but must handle stale values, race conditions, and cache stampedes."
+  },
+  {
+    "title": "Cache Stampede and Hot Keys",
+    "url": "https://en.wikipedia.org/wiki/Cache_stampede",
+    "source": "expanded-demo-corpus",
+    "text": "A cache stampede occurs when many requests miss an expired popular key and all recompute it simultaneously. Request coalescing, locks, stale-while-revalidate, randomized TTLs, and background refresh reduce stampedes. Hot keys can overload one cache shard even when total cluster capacity is sufficient."
+  },
+  {
+    "title": "Layer 4 vs Layer 7 Load Balancing",
+    "url": "https://www.nginx.com/resources/glossary/layer-4-load-balancing/",
+    "source": "expanded-demo-corpus",
+    "text": "Layer 4 load balancing routes connections using transport information such as IP addresses and ports. Layer 7 load balancing understands application protocols such as HTTP and can route by hostname, path, header, or cookie. Layer 7 enables richer policies but performs more application-aware processing."
+  },
+  {
+    "title": "CDN Basics",
+    "url": "https://developer.mozilla.org/en-US/docs/Glossary/CDN",
+    "source": "expanded-demo-corpus",
+    "text": "A content delivery network caches content at edge locations closer to users. CDNs reduce origin load and latency for static assets, media, and cacheable responses. Cache-Control headers define freshness, while versioned assets and invalidation mechanisms handle updates."
+  },
+  {
+    "title": "Cosine Similarity",
+    "url": "https://en.wikipedia.org/wiki/Cosine_similarity",
+    "source": "expanded-demo-corpus",
+    "text": "Cosine similarity compares vector direction by dividing the dot product by vector magnitudes. It is common in semantic search because vectors with similar meaning can have similar directions even when their absolute magnitudes differ. Higher cosine similarity generally means stronger vector alignment."
+  },
+  {
+    "title": "Embeddings for Semantic Search",
+    "url": "https://platform.openai.com/docs/guides/embeddings",
+    "source": "expanded-demo-corpus",
+    "text": "Embeddings convert text into numerical vectors where semantically related inputs tend to be nearby. Search systems embed documents and queries and retrieve vectors with high similarity. Embeddings improve recall for paraphrases but lexical search often remains stronger for exact identifiers, codes, and rare terms."
+  },
+  {
+    "title": "Search Precision, Recall, MRR and nDCG",
+    "url": "https://en.wikipedia.org/wiki/Precision_and_recall",
+    "source": "expanded-demo-corpus",
+    "text": "Precision measures how many retrieved results are relevant, while recall measures how many relevant results were retrieved. Mean reciprocal rank emphasizes the rank of the first relevant result. nDCG evaluates graded relevance across a ranked list with stronger weight on high positions. These metrics require judged query-document relevance data."
+  },
+  {
+    "title": "Prompt Injection in RAG",
+    "url": "https://owasp.org/www-project-top-10-for-large-language-model-applications/",
+    "source": "expanded-demo-corpus",
+    "text": "Prompt injection happens when untrusted content contains instructions intended to manipulate an AI system. In retrieval-augmented generation, retrieved documents should be treated as data rather than trusted system instructions. Defenses include privilege separation, source controls, output validation, safe tool policies, and adversarial evaluation."
+  },
+  {
+    "title": "Grounded Generation and Hallucination Control",
+    "url": "https://arxiv.org/abs/2005.11401",
+    "source": "expanded-demo-corpus",
+    "text": "Grounded generation restricts an answer to retrieved evidence and keeps source metadata for citations. When relevant evidence is missing, abstaining is safer than inventing an answer. Retrieval grounding, validation, structured tool use, and citations can reduce hallucination risk but do not guarantee zero hallucinations from a general language model."
+  },
+  {
+    "title": "Docker Containers and Images",
+    "url": "https://docs.docker.com/get-started/docker-concepts/the-basics/what-is-a-container/",
+    "source": "expanded-demo-corpus",
+    "text": "A container packages an application with runtime dependencies while sharing the host operating-system kernel. Images are immutable build artifacts composed of layers, while containers are running instances. Containers improve environment consistency and are commonly used with orchestration platforms such as Kubernetes."
+  },
+  {
+    "title": "Kubernetes Services and Rolling Updates",
+    "url": "https://kubernetes.io/docs/concepts/services-networking/service/",
+    "source": "expanded-demo-corpus",
+    "text": "A Kubernetes Service gives a stable network endpoint to a changing set of Pods. Deployments manage replicated Pods and support rolling updates. Readiness probes keep new or unhealthy Pods out of service endpoints, while maxSurge and maxUnavailable control availability during rollout."
+  },
+  {
+    "title": "Kubernetes Horizontal Pod Autoscaler",
+    "url": "https://kubernetes.io/docs/tasks/run-application/horizontal-pod-autoscale/",
+    "source": "expanded-demo-corpus",
+    "text": "The Horizontal Pod Autoscaler changes replica count based on resource or custom metrics. Autoscaling is not instantaneous, so admission control and capacity planning are still necessary for sudden spikes. Stateless services are easier to scale horizontally because any replica can serve a request."
+  },
+  {
+    "title": "Metrics, Logs and Traces",
+    "url": "https://opentelemetry.io/docs/concepts/signals/",
+    "source": "expanded-demo-corpus",
+    "text": "Metrics summarize numeric behavior over time, logs record discrete events, and traces follow individual requests across components. These signals answer different questions and become more useful when correlated with shared labels and trace identifiers. Observability helps explain where a request failed and why."
+  },
+  {
+    "title": "Prometheus Counters, Gauges and Histograms",
+    "url": "https://prometheus.io/docs/introduction/overview/",
+    "source": "expanded-demo-corpus",
+    "text": "Prometheus stores labeled time-series metrics. Counters track totals that normally increase, gauges represent values that can rise and fall, and histograms record distributions such as request latency. Labels should avoid uncontrolled high cardinality because each label combination creates a separate time series."
+  },
+  {
+    "title": "Latency Percentiles",
+    "url": "https://sre.google/sre-book/monitoring-distributed-systems/",
+    "source": "expanded-demo-corpus",
+    "text": "Latency percentiles describe a request-time distribution. p50 is the median, while p95 and p99 expose tail latency that an average can hide. Tail latency is important in distributed fan-out because a request may wait for the slowest dependency."
+  },
+  {
+    "title": "JWT Authentication",
+    "url": "https://datatracker.ietf.org/doc/html/rfc7519",
+    "source": "expanded-demo-corpus",
+    "text": "A JSON Web Token carries signed claims between parties. Applications must verify the signature and validate issuer, audience, expiration, and other relevant claims before trusting it. JWT is a token format, not an authorization policy; applications still need explicit permission checks."
+  },
+  {
+    "title": "SSRF Server-Side Request Forgery",
+    "url": "https://owasp.org/www-community/attacks/Server_Side_Request_Forgery",
+    "source": "expanded-demo-corpus",
+    "text": "Server-side request forgery occurs when an application fetches a user-controlled URL and can be tricked into accessing private or privileged network locations. Defenses include URL validation, blocking loopback and private ranges, redirect checks, outbound network policy, allowlists where practical, and strict timeouts."
+  },
+  {
+    "title": "Microservices vs Monoliths",
+    "url": "https://martinfowler.com/articles/microservices.html",
+    "source": "expanded-demo-corpus",
+    "text": "A monolith keeps components in one deployable unit and avoids many distributed-systems costs. Microservices create independent deployment and scaling boundaries but add network failures, service discovery, distributed data, tracing, and operational overhead. The choice should follow concrete scaling and ownership needs."
+  },
+  {
+    "title": "Saga Pattern",
+    "url": "https://microservices.io/patterns/data/saga.html",
+    "source": "expanded-demo-corpus",
+    "text": "A saga coordinates a business transaction across multiple services using a sequence of local transactions. If a later step fails, compensating actions reverse or offset earlier steps. Sagas avoid distributed ACID transactions but require explicit failure states, idempotency, retries, and compensation semantics."
+  },
+  {
+    "title": "CQRS",
+    "url": "https://martinfowler.com/bliki/CQRS.html",
+    "source": "expanded-demo-corpus",
+    "text": "Command Query Responsibility Segregation separates models used for writes from models optimized for reads. It can help complex domains or high-scale read workloads, especially with event-driven projections, but it increases synchronization and operational complexity and is unnecessary for many systems."
+  },
+  {
+    "title": "Async I/O and Event Loops",
+    "url": "https://docs.python.org/3/library/asyncio.html",
+    "source": "expanded-demo-corpus",
+    "text": "Asynchronous I/O lets one thread interleave many tasks while they wait for network or disk operations. An event loop resumes coroutines when awaited operations are ready. It is effective for I/O-bound concurrency, while CPU-heavy work should be moved off the event loop."
+  },
+  {
+    "title": "Semaphores and Bounded Concurrency",
+    "url": "https://docs.python.org/3/library/asyncio-sync.html",
+    "source": "expanded-demo-corpus",
+    "text": "A semaphore permits up to a configured number of concurrent users of a resource. Services use semaphores to bound fan-out or protect a dependency from too many simultaneous calls. Correct release behavior is important so exceptions do not leak capacity."
+  },
+  {
+    "title": "Canary and Blue-Green Deployments",
+    "url": "https://martinfowler.com/bliki/CanaryRelease.html",
+    "source": "expanded-demo-corpus",
+    "text": "A canary release exposes a small percentage of traffic to a new version before wider rollout and compares error, latency, and business metrics. Blue-green deployment keeps two environments and switches traffic between them. Both strategies reduce rollout risk and support faster rollback."
+  },
+  {
+    "title": "Transformer Attention",
+    "url": "https://arxiv.org/abs/1706.03762",
+    "source": "expanded-demo-corpus",
+    "text": "Transformers process sequences with attention mechanisms that let each token combine information from other tokens. Self-attention creates query, key, and value representations and weights relevant context. Transformers enable parallel training and form the basis of modern large language models."
+  },
+  {
+    "title": "Tokens, Context Windows and Sampling",
+    "url": "https://platform.openai.com/docs/concepts",
+    "source": "expanded-demo-corpus",
+    "text": "Language models operate on tokens rather than raw words. A context window limits how many input and output tokens can participate in one request. Temperature and top-p control sampling randomness: lower values make generation more deterministic, while higher values increase diversity."
+  },
+  {
+    "title": "Nexus Adaptive Search Autopilot",
+    "url": "https://github.com/samgulati/nexus-search",
+    "source": "expanded-demo-corpus",
+    "text": "Nexus has an adaptive controller that chooses a retrieval plan from query shape, in-flight request pressure, recent p95 latency, healthy shard count, and circuit-breaker state. It exposes quality, balanced, survival, and manual tiers. Under severe pressure it can switch to lexical retrieval and disable LLM generation in favor of a grounded extractive path."
+  },
+  {
+    "title": "Nexus Distributed Search Architecture",
+    "url": "https://github.com/samgulati/nexus-search",
+    "source": "expanded-demo-corpus",
+    "text": "Nexus uses a coordinator and multiple independent search shards. The coordinator fans queries out concurrently, merges available shard responses using reciprocal rank fusion, and assigns documents with rendezvous hashing. Each shard owns local lexical and semantic retrieval structures."
+  },
+  {
+    "title": "Nexus Reliability Controls",
+    "url": "https://github.com/samgulati/nexus-search",
+    "source": "expanded-demo-corpus",
+    "text": "Nexus uses bounded fan-out, per-shard circuit breakers, request admission control, timeouts, liveness, and dependency-aware readiness. Admission control can return HTTP 503 with Retry-After when capacity is exhausted. Circuit breakers isolate repeated shard failures and later permit recovery probes."
+  },
+  {
+    "title": "Nexus Kafka Indexing and PostgreSQL Recovery",
+    "url": "https://github.com/samgulati/nexus-search",
+    "source": "expanded-demo-corpus",
+    "text": "Nexus supports asynchronous indexing through Kafka or Redpanda with idempotent handling, retries, and dead-letter paths. Search shards can use PostgreSQL as durable document storage while rebuilding derived in-memory search indexes during startup recovery."
   }
 ]

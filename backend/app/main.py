@@ -54,7 +54,11 @@ async def lifespan(_app: FastAPI):
         restored = document_store.load_shard(settings.shard_id)
         if restored:
             index_service.restore_documents(restored)
-        elif seed.exists():
+
+        # Seed documents are a versioned demo corpus. Add only documents that
+        # are not already present so existing PostgreSQL-backed shards can pick
+        # up newly added demo content without wiping or duplicating stored data.
+        if seed.exists():
             data = json.loads(seed.read_text(encoding="utf-8"))
             items = [DocumentIn(**item) for item in data]
             selected = [
@@ -64,7 +68,8 @@ async def lifespan(_app: FastAPI):
             before = set(index_service.documents)
             index_service.add_many(selected)
             created = [doc for doc_id, doc in index_service.documents.items() if doc_id not in before]
-            document_store.upsert_many(settings.shard_id, created)
+            if created:
+                document_store.upsert_many(settings.shard_id, created)
     elif not index_service.documents and seed.exists():
         if settings.service_role == "coordinator":
             # Coordinator owns routing; shards own the actual indexes.

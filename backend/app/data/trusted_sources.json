@@ -1,0 +1,137 @@
+[
+  {
+    "name": "MDN Web Docs",
+    "seed": "https://developer.mozilla.org/en-US/docs/Web/HTTP",
+    "domain": "developer.mozilla.org",
+    "category": "web",
+    "tier": "core",
+    "max_pages": 30,
+    "max_depth": 2
+  },
+  {
+    "name": "Kubernetes Docs",
+    "seed": "https://kubernetes.io/docs/concepts/",
+    "domain": "kubernetes.io",
+    "category": "infrastructure",
+    "tier": "core",
+    "max_pages": 35,
+    "max_depth": 2
+  },
+  {
+    "name": "PostgreSQL Docs",
+    "seed": "https://www.postgresql.org/docs/current/",
+    "domain": "www.postgresql.org",
+    "category": "database",
+    "tier": "core",
+    "max_pages": 35,
+    "max_depth": 2
+  },
+  {
+    "name": "Redis Docs",
+    "seed": "https://redis.io/docs/latest/",
+    "domain": "redis.io",
+    "category": "cache",
+    "tier": "core",
+    "max_pages": 30,
+    "max_depth": 2
+  },
+  {
+    "name": "Docker Docs",
+    "seed": "https://docs.docker.com/get-started/",
+    "domain": "docs.docker.com",
+    "category": "containers",
+    "tier": "core",
+    "max_pages": 30,
+    "max_depth": 2
+  },
+  {
+    "name": "Apache Kafka Docs",
+    "seed": "https://kafka.apache.org/documentation/",
+    "domain": "kafka.apache.org",
+    "category": "messaging",
+    "tier": "core",
+    "max_pages": 20,
+    "max_depth": 1
+  },
+  {
+    "name": "OpenTelemetry Docs",
+    "seed": "https://opentelemetry.io/docs/",
+    "domain": "opentelemetry.io",
+    "category": "observability",
+    "tier": "core",
+    "max_pages": 30,
+    "max_depth": 2
+  },
+  {
+    "name": "Prometheus Docs",
+    "seed": "https://prometheus.io/docs/introduction/overview/",
+    "domain": "prometheus.io",
+    "category": "observability",
+    "tier": "core",
+    "max_pages": 25,
+    "max_depth": 2
+  },
+  {
+    "name": "OWASP Cheat Sheet Series",
+    "seed": "https://cheatsheetseries.owasp.org/",
+    "domain": "cheatsheetseries.owasp.org",
+    "category": "security",
+    "tier": "core",
+    "max_pages": 30,
+    "max_depth": 2
+  },
+  {
+    "name": "Python Docs",
+    "seed": "https://docs.python.org/3/tutorial/",
+    "domain": "docs.python.org",
+    "category": "language",
+    "tier": "core",
+    "max_pages": 30,
+    "max_depth": 2
+  },
+  {
+    "name": "FastAPI Docs",
+    "seed": "https://fastapi.tiangolo.com/tutorial/",
+    "domain": "fastapi.tiangolo.com",
+    "category": "backend",
+    "tier": "extended",
+    "max_pages": 30,
+    "max_depth": 2
+  },
+  {
+    "name": "React Docs",
+    "seed": "https://react.dev/learn",
+    "domain": "react.dev",
+    "category": "frontend",
+    "tier": "extended",
+    "max_pages": 30,
+    "max_depth": 2
+  },
+  {
+    "name": "Java Docs",
+    "seed": "https://docs.oracle.com/en/java/javase/21/docs/api/",
+    "domain": "docs.oracle.com",
+    "category": "language",
+    "tier": "extended",
+    "max_pages": 25,
+    "max_depth": 1
+  },
+  {
+    "name": "AWS Builders Library",
+    "seed": "https://aws.amazon.com/builders-library/",
+    "domain": "aws.amazon.com",
+    "category": "distributed-systems",
+    "tier": "extended",
+    "max_pages": 25,
+    "max_depth": 2
+  },
+  {
+    "name": "Google SRE Book",
+    "seed": "https://sre.google/sre-book/table-of-contents/",
+    "domain": "sre.google",
+    "category": "reliability",
+    "tier": "extended",
+    "max_pages": 25,
+    "max_depth": 2
+  }
+]
