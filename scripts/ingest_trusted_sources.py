@@ -58,13 +58,19 @@ def main() -> None:
 
     for idx, source in enumerate(selected, 1):
         pages = args.pages if args.pages > 0 else int(source["max_pages"])
+        seeds = source.get("seeds") or [source["seed"]]
         body = {
-            "seeds": [source["seed"]],
+            "seeds": seeds,
             "max_pages": max(1, min(pages, 100)),
             "max_depth": int(source["max_depth"]),
             "same_domain_only": True,
         }
-        print(f"\n[{idx}/{len(selected)}] {source['name']} :: {source['seed']} :: pages={body['max_pages']} depth={body['max_depth']}")
+        print(
+            f"\n[{idx}/{len(selected)}] {source['name']} :: "
+            f"seeds={len(seeds)} :: pages={body['max_pages']} depth={body['max_depth']}"
+        )
+        for seed in seeds:
+            print(f"  - {seed}")
         if args.dry_run:
             continue
         try:

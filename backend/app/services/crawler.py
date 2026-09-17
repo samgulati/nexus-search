@@ -26,6 +26,48 @@ TRACKING_PARAMS = {
     "fbclid", "gclid", "mc_cid", "mc_eid", "ref", "source",
 }
 
+LOCALE_PATH_SEGMENT_RE = re.compile(
+    r"^/(?:[a-z]{2}(?:-[a-z]{2})?)(?:/|$)",
+    re.IGNORECASE,
+)
+LOCALE_EXEMPT_SEGMENTS = {
+    "en", "en-us", "docs", "api", "learn", "reference", "tutorial",
+}
+
+LOW_VALUE_SECTION_NAMES = {
+    "navigation",
+    "table of contents",
+    "feedback",
+    "community",
+    "training",
+    "certifications",
+}
+
+LOW_VALUE_TEXT_MARKERS = (
+    "theme auto light dark",
+    "index modules | next | previous",
+)
+
+
+def is_probable_localized_path(url: str) -> bool:
+    path = urlparse(url).path or "/"
+    first = path.strip("/").split("/", 1)[0].lower()
+    if first in LOCALE_EXEMPT_SEGMENTS:
+        return False
+    return bool(LOCALE_PATH_SEGMENT_RE.match(path))
+
+
+def is_low_value_block(section: str, text: str) -> bool:
+    section_norm = " ".join((section or "").lower().split()).strip("¶ ")
+    if section_norm in LOW_VALUE_SECTION_NAMES:
+        return True
+    text_norm = " ".join((text or "").lower().split())
+    if any(marker in text_norm for marker in LOW_VALUE_TEXT_MARKERS):
+        return True
+    if len(text_norm) < 260 and text.count("|") >= 3:
+        return True
+    return False
+
 
 def _safe_public_host(hostname: str) -> bool:
     if hostname in {"localhost", "localhost.localdomain"}:
@@ -152,7 +194,11 @@ def extract_page_documents(html: str, url: str, default_title: str) -> list[Docu
     seen_text: set[str] = set()
     chunk_index = 0
     for section, text in blocks:
+        if is_low_value_block(section, text):
+            continue
         for chunk in chunk_text(text):
+            if is_low_value_block(section, chunk):
+                continue
             normalized = " ".join(chunk.lower().split())
             if normalized in seen_text:
                 continue
@@ -215,6 +261,9 @@ class Crawler:
                 seen.add(url)
                 parsed = urlparse(url)
 
+                if is_probable_localized_path(url):
+                    skipped += 1
+                    continue
                 if not parsed.hostname or not _safe_public_host(parsed.hostname):
                     skipped += 1
                     continue
@@ -258,6 +307,8 @@ class Crawler:
                         for anchor in soup.find_all("a", href=True):
                             candidate = canonicalize_url(urljoin(final_url, anchor["href"]))
                             if not candidate or candidate in seen:
+                                continue
+                            if is_probable_localized_path(candidate):
                                 continue
                             cparsed = urlparse(candidate)
                             if request.same_domain_only and cparsed.netloc.lower() not in allowed_domains:

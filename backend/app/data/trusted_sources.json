@@ -15,7 +15,11 @@
     "category": "infrastructure",
     "tier": "core",
     "max_pages": 35,
-    "max_depth": 2
+    "max_depth": 2,
+    "seeds": [
+      "https://kubernetes.io/docs/concepts/",
+      "https://kubernetes.io/docs/tasks/configure-pod-container/configure-liveness-readiness-startup-probes/"
+    ]
   },
   {
     "name": "PostgreSQL Docs",
@@ -24,7 +28,11 @@
     "category": "database",
     "tier": "core",
     "max_pages": 35,
-    "max_depth": 2
+    "max_depth": 2,
+    "seeds": [
+      "https://www.postgresql.org/docs/current/",
+      "https://www.postgresql.org/docs/current/sql-createindex.html"
+    ]
   },
   {
     "name": "Redis Docs",
@@ -33,7 +41,11 @@
     "category": "cache",
     "tier": "core",
     "max_pages": 30,
-    "max_depth": 2
+    "max_depth": 2,
+    "seeds": [
+      "https://redis.io/docs/latest/",
+      "https://redis.io/docs/latest/commands/ttl/"
+    ]
   },
   {
     "name": "Docker Docs",
@@ -60,7 +72,11 @@
     "category": "observability",
     "tier": "core",
     "max_pages": 30,
-    "max_depth": 2
+    "max_depth": 2,
+    "seeds": [
+      "https://opentelemetry.io/docs/",
+      "https://opentelemetry.io/docs/concepts/signals/traces/"
+    ]
   },
   {
     "name": "Prometheus Docs",
@@ -87,7 +103,11 @@
     "category": "language",
     "tier": "core",
     "max_pages": 30,
-    "max_depth": 2
+    "max_depth": 2,
+    "seeds": [
+      "https://docs.python.org/3/tutorial/",
+      "https://docs.python.org/3/tutorial/classes.html#iterators"
+    ]
   },
   {
     "name": "FastAPI Docs",
@@ -96,7 +116,12 @@
     "category": "backend",
     "tier": "extended",
     "max_pages": 30,
-    "max_depth": 2
+    "max_depth": 2,
+    "seeds": [
+      "https://fastapi.tiangolo.com/tutorial/",
+      "https://fastapi.tiangolo.com/tutorial/dependencies/",
+      "https://fastapi.tiangolo.com/tutorial/body/"
+    ]
   },
   {
     "name": "React Docs",
@@ -105,7 +130,11 @@
     "category": "frontend",
     "tier": "extended",
     "max_pages": 30,
-    "max_depth": 2
+    "max_depth": 2,
+    "seeds": [
+      "https://react.dev/learn",
+      "https://react.dev/reference/react/hooks"
+    ]
   },
   {
     "name": "Java Docs",
@@ -114,7 +143,11 @@
     "category": "language",
     "tier": "extended",
     "max_pages": 25,
-    "max_depth": 1
+    "max_depth": 1,
+    "seeds": [
+      "https://docs.oracle.com/en/java/javase/21/docs/api/",
+      "https://docs.oracle.com/javase/specs/jls/se21/html/jls-9.html"
+    ]
   },
   {
     "name": "AWS Builders Library",
