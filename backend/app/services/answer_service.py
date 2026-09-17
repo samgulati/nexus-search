@@ -258,6 +258,25 @@ class AnswerService:
 
         return max(0.0, min(relevance, 1.0))
 
+    @staticmethod
+    def _explicit_identifier_terms(query: str) -> set[str]:
+        identifiers = set()
+
+        # All-caps technical tokens are usually exact identifiers/commands/
+        # acronyms: HTTP, CSRF, TTL, PERMASTORE, etc.
+        for token in re.findall(r"\b[A-Z][A-Z0-9_-]{2,}\b", query):
+            identifiers.add(token.lower())
+
+        # Numeric and hyphenated terms are also identifier-like.
+        for token in re.findall(r"[A-Za-z0-9][A-Za-z0-9_+.#-]*", query):
+            lowered = token.lower().strip("._+#-")
+            if not lowered:
+                continue
+            if any(ch.isdigit() for ch in lowered) or "-" in lowered:
+                identifiers.add(lowered)
+
+        return identifiers
+
     @classmethod
     def _rank_relevant_results(cls, query: str, results, *, limit: int | None = None):
         ranked = []
@@ -278,10 +297,7 @@ class AnswerService:
         relative_floor = max(MIN_RESULT_RELEVANCE, best_relevance * RELATIVE_RELEVANCE_FLOOR)
 
         query_terms = cls._query_terms(query)
-        identifier_terms = {
-            term for term in query_terms
-            if any(ch.isdigit() for ch in term) or "-" in term
-        }
+        identifier_terms = cls._explicit_identifier_terms(query)
 
         selected = []
         for relevance, _score, result in ranked:
@@ -409,10 +425,7 @@ class AnswerService:
         matched = query_terms & sentence_terms
         coverage = len(matched) / len(query_terms)
 
-        identifier_terms = {
-            term for term in query_terms
-            if any(ch.isdigit() for ch in term) or "-" in term
-        }
+        identifier_terms = cls._explicit_identifier_terms(query)
         identifier_bonus = 0.0
         if identifier_terms:
             identifier_hits = len(identifier_terms & sentence_terms)
