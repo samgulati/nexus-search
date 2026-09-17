@@ -86,3 +86,28 @@ python3 scripts/reingest_eval_sources.py \
 Then rerun both retrieval diagnostics and the 40-case quality benchmark. The
 goal is to improve passage/candidate quality while preserving adversarial and
 out-of-domain abstentions.
+
+## URL refresh and corpus hygiene
+
+Phase 12.5 adds safe URL-level refresh semantics for trusted documentation.
+
+A refresh only replaces a page after the fetch and extraction produced at least
+one valid chunk. Replacement is atomic per URL on each shard: stale chunks for
+that URL are removed, the current cleaned chunks are persisted transactionally,
+and the in-memory index is rebuilt once. If persistence fails, the previous
+in-memory corpus is restored.
+
+Refresh metrics:
+- `nexus_corpus_refresh_events_total{outcome=...}`
+- `nexus_corpus_refresh_chunks_total{action=...}`
+
+Refresh the evaluation-critical canonical pages with:
+
+```bash
+python3 scripts/refresh_eval_sources.py \
+  --url https://nexus-search-production.up.railway.app \
+  --timeout 600
+```
+
+`ADMIN_TOKEN` must stay in the local environment and must never be pasted into
+logs, source control, or chat.

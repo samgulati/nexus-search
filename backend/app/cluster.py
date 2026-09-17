@@ -10,7 +10,14 @@ from typing import Iterable
 import httpx
 
 from .config import settings
-from .models import Document, DocumentIn, SearchResponse, SearchResult, StatsResponse
+from .models import (
+    Document,
+    DocumentIn,
+    RefreshIndexResponse,
+    SearchResponse,
+    SearchResult,
+    StatsResponse,
+)
 from .observability import (
     CIRCUIT_EVENTS,
     SHARD_INFLIGHT,
@@ -306,6 +313,84 @@ class ClusterService:
                 skipped += len(batch)
 
         return added, skipped
+
+    async def _refresh_target_urls(
+        self,
+        client: httpx.AsyncClient,
+        target: ShardTarget,
+        pages: dict[str, list[DocumentIn]],
+    ) -> tuple[int, int, int, int, int]:
+        added = skipped = removed = refreshed = unchanged = 0
+        for url, documents in pages.items():
+            response = await client.post(
+                f"{target.url}/internal/index/refresh",
+                json={
+                    "url": url,
+                    "documents": [item.model_dump(mode="json") for item in documents],
+                },
+                headers=self._cluster_headers(),
+            )
+            response.raise_for_status()
+            body = RefreshIndexResponse.model_validate(response.json())
+            added += body.added
+            skipped += body.skipped
+            removed += body.removed
+            if body.unchanged:
+                unchanged += 1
+            else:
+                refreshed += 1
+        return added, skipped, removed, refreshed, unchanged
+
+    async def refresh_many(
+        self,
+        items: list[DocumentIn],
+    ) -> tuple[int, int, int, int, int]:
+        """Replace successfully extracted pages URL-by-URL.
+
+        Refresh is atomic per URL on each shard. Pages with no valid extracted
+        chunks are never passed here, so a failed/empty crawl cannot erase a
+        previously indexed page.
+        """
+        if not items:
+            return 0, 0, 0, 0, 0
+
+        pages: dict[str, list[DocumentIn]] = {}
+        for item in items:
+            if not item.url:
+                continue
+            pages.setdefault(item.url, []).append(item)
+
+        if not pages:
+            return 0, 0, 0, 0, 0
+
+        if not self.is_coordinator or not self.shard_targets:
+            totals = [0, 0, 0, 0, 0]
+            for url, documents in pages.items():
+                added, skipped, removed, unchanged = index_service.replace_url(url, documents)
+                totals[0] += added
+                totals[1] += skipped
+                totals[2] += removed
+                totals[3 if not unchanged else 4] += 1
+            return tuple(totals)
+
+        ring = RendezvousHash(t.shard_id for t in self.shard_targets)
+        groups: dict[str, dict[str, list[DocumentIn]]] = {
+            t.shard_id: {} for t in self.shard_targets
+        }
+        for url, documents in pages.items():
+            shard_id = ring.pick(url)
+            groups[shard_id][url] = documents
+
+        timeout = httpx.Timeout(settings.ingest_batch_timeout_seconds)
+        async with httpx.AsyncClient(timeout=timeout) as client:
+            tasks = [
+                self._refresh_target_urls(client, target, groups[target.shard_id])
+                for target in self.shard_targets
+                if groups[target.shard_id]
+            ]
+            results = await asyncio.gather(*tasks)
+
+        return tuple(sum(result[i] for result in results) for i in range(5))
 
     async def add_many(self, items: list[DocumentIn]) -> tuple[int, int]:
         if not items:

@@ -18,6 +18,8 @@ from .config import settings
 from .observability import (
     APP_INFLIGHT,
     REQUEST_GATE_EVENTS,
+    CORPUS_REFRESH_CHUNKS,
+    CORPUS_REFRESH_EVENTS,
     extract_http_context,
     observe_http,
     render_metrics,
@@ -37,6 +39,8 @@ from .models import (
     DocumentBatch,
     DocumentIn,
     QueuedIndexResponse,
+    RefreshDocumentBatch,
+    RefreshIndexResponse,
     SearchResponse,
     StatsResponse,
 )
@@ -315,7 +319,11 @@ async def queue_document(item: DocumentIn) -> QueuedIndexResponse:
 
 @app.post("/api/crawl", response_model=CrawlResponse, dependencies=[Depends(require_admin)])
 async def crawl(request: CrawlRequest) -> CrawlResponse:
-    return await crawler.crawl(request, index_many=cluster_service.add_many)
+    return await crawler.crawl(
+        request,
+        index_many=cluster_service.add_many,
+        refresh_many=cluster_service.refresh_many,
+    )
 
 
 # Internal shard API. It is token-protected even when the service has a public domain.
@@ -356,6 +364,54 @@ def internal_add_batch(batch: DocumentBatch) -> BatchIndexResponse:
         created = [doc for doc_id, doc in index_service.documents.items() if doc_id not in before]
         document_store.upsert_many(settings.shard_id, created)
     return BatchIndexResponse(added=added, skipped=skipped)
+
+
+@app.post(
+    "/internal/index/refresh",
+    response_model=RefreshIndexResponse,
+    dependencies=[Depends(require_cluster)],
+)
+def internal_refresh_url(batch: RefreshDocumentBatch) -> RefreshIndexResponse:
+    if any((item.url or "") != batch.url for item in batch.documents):
+        raise HTTPException(
+            status_code=400,
+            detail="All refresh documents must belong to the requested URL",
+        )
+
+    snapshot = list(index_service.documents.values())
+    try:
+        added, skipped, removed, unchanged = index_service.replace_url(
+            batch.url,
+            batch.documents,
+        )
+
+        if not unchanged and settings.service_role == "shard" and document_store.enabled:
+            current = [
+                doc
+                for doc in index_service.documents.values()
+                if (doc.url or "") == batch.url
+            ]
+            document_store.replace_url(settings.shard_id, batch.url, current)
+
+        CORPUS_REFRESH_EVENTS.labels("unchanged" if unchanged else "refreshed").inc()
+        if added:
+            CORPUS_REFRESH_CHUNKS.labels("added").inc(added)
+        if skipped:
+            CORPUS_REFRESH_CHUNKS.labels("skipped").inc(skipped)
+        if removed:
+            CORPUS_REFRESH_CHUNKS.labels("removed").inc(removed)
+
+        return RefreshIndexResponse(
+            url=batch.url,
+            added=added,
+            skipped=skipped,
+            removed=removed,
+            unchanged=unchanged,
+        )
+    except Exception:
+        index_service.restore_documents(snapshot)
+        CORPUS_REFRESH_EVENTS.labels("error").inc()
+        raise
 
 
 # Single-container production serving: only coordinator/standalone should serve the public UI.

@@ -239,6 +239,10 @@ class Crawler:
         self,
         request: CrawlRequest,
         index_many: Callable[[list[DocumentIn]], Awaitable[tuple[int, int]]] | None = None,
+        refresh_many: Callable[
+            [list[DocumentIn]],
+            Awaitable[tuple[int, int, int, int, int]],
+        ] | None = None,
     ) -> CrawlResponse:
         t0 = time.perf_counter()
         queue = deque((canonicalize_url(str(seed)), 0) for seed in request.seeds)
@@ -320,7 +324,38 @@ class Crawler:
                 except Exception:
                     failed += 1
 
-        if index_many is None:
+        stale_chunks_removed = 0
+        refreshed_urls = 0
+        unchanged_urls = 0
+
+        if request.refresh_existing:
+            # Only non-empty, successfully extracted pages appear in `items`.
+            # That makes refresh fail-safe: a fetch/extraction failure never
+            # deletes a previously indexed page.
+            if refresh_many is None:
+                pages: dict[str, list[DocumentIn]] = {}
+                for item in items:
+                    if item.url:
+                        pages.setdefault(item.url, []).append(item)
+                indexed = duplicates = 0
+                for url, documents in pages.items():
+                    added, dupes, removed, unchanged = index_service.replace_url(url, documents)
+                    indexed += added
+                    duplicates += dupes
+                    stale_chunks_removed += removed
+                    if unchanged:
+                        unchanged_urls += 1
+                    else:
+                        refreshed_urls += 1
+            else:
+                (
+                    indexed,
+                    duplicates,
+                    stale_chunks_removed,
+                    refreshed_urls,
+                    unchanged_urls,
+                ) = await refresh_many(items)
+        elif index_many is None:
             indexed, duplicates = index_service.add_many(items)
         else:
             indexed, duplicates = await index_many(items)
@@ -336,6 +371,9 @@ class Crawler:
             content_pages=content_pages,
             empty_pages=empty_pages,
             chunks_extracted=len(items),
+            refreshed_urls=refreshed_urls,
+            unchanged_urls=unchanged_urls,
+            stale_chunks_removed=stale_chunks_removed,
         )
 
 

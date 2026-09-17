@@ -30,6 +30,7 @@ def main() -> int:
         ),
     )
     parser.add_argument("--pages", type=int, default=20)
+    parser.add_argument("--timeout", type=int, default=600)
     parser.add_argument("--dry-run", action="store_true")
     args = parser.parse_args()
 
@@ -49,6 +50,8 @@ def main() -> int:
             target,
             "--pages",
             str(args.pages),
+            "--timeout",
+            str(args.timeout),
         ]
         if args.dry_run:
             cmd.append("--dry-run")

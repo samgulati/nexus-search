@@ -92,6 +92,64 @@ class PostgresDocumentStore:
             for row in rows
         ]
 
+    def replace_url(
+        self,
+        shard_id: str,
+        url: str,
+        documents: Iterable[Document],
+    ) -> tuple[int, int]:
+        """Transactionally replace all persisted chunks for one canonical URL."""
+        if not self.enabled:
+            return 0, 0
+
+        docs = list(documents)
+        with self._connect() as conn:
+            with conn.cursor() as cur:
+                cur.execute(
+                    """
+                    DELETE FROM nexus_documents
+                    WHERE shard_id = %s AND url = %s
+                    """,
+                    (str(shard_id), url),
+                )
+                removed = int(cur.rowcount or 0)
+
+                if docs:
+                    rows = [
+                        (
+                            str(shard_id),
+                            doc.id,
+                            doc.title,
+                            doc.text,
+                            doc.url,
+                            doc.source,
+                            doc.content_hash,
+                            doc.indexed_at,
+                        )
+                        for doc in docs
+                    ]
+                    cur.executemany(
+                        """
+                        INSERT INTO nexus_documents (
+                            shard_id, document_id, title, body, url, source,
+                            content_hash, indexed_at
+                        ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s)
+                        ON CONFLICT (shard_id, content_hash) DO UPDATE SET
+                            document_id = EXCLUDED.document_id,
+                            title = EXCLUDED.title,
+                            body = EXCLUDED.body,
+                            url = EXCLUDED.url,
+                            source = EXCLUDED.source,
+                            indexed_at = EXCLUDED.indexed_at
+                        """,
+                        rows,
+                    )
+                    written = len(rows)
+                else:
+                    written = 0
+
+        return removed, written
+
     def upsert(self, shard_id: str, document: Document) -> int:
         return self.upsert_many(shard_id, [document])
 

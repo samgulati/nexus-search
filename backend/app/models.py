@@ -103,6 +103,7 @@ class CrawlRequest(BaseModel):
     max_pages: int = Field(default=20, ge=1, le=100)
     max_depth: int = Field(default=1, ge=0, le=3)
     same_domain_only: bool = True
+    refresh_existing: bool = False
 
 
 class CrawlResponse(BaseModel):
@@ -116,6 +117,9 @@ class CrawlResponse(BaseModel):
     content_pages: int = 0
     empty_pages: int = 0
     chunks_extracted: int = 0
+    refreshed_urls: int = 0
+    unchanged_urls: int = 0
+    stale_chunks_removed: int = 0
 
 
 class StatsResponse(BaseModel):
@@ -139,6 +143,19 @@ class DocumentBatch(BaseModel):
 class BatchIndexResponse(BaseModel):
     added: int
     skipped: int
+
+
+class RefreshDocumentBatch(BaseModel):
+    url: str = Field(min_length=1, max_length=2000)
+    documents: list[DocumentIn] = Field(min_length=1, max_length=250)
+
+
+class RefreshIndexResponse(BaseModel):
+    url: str
+    added: int
+    skipped: int
+    removed: int
+    unchanged: bool = False
 
 
 class IndexEvent(BaseModel):

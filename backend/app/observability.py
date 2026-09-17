@@ -78,6 +78,16 @@ AUTOPILOT_DECISIONS = Counter(
     "Adaptive search-plan decisions by tier, retrieval mode, and query profile.",
     ("tier", "selected_mode", "query_profile"),
 )
+CORPUS_REFRESH_EVENTS = Counter(
+    "nexus_corpus_refresh_events_total",
+    "Per-URL corpus refresh outcomes.",
+    ("outcome",),
+)
+CORPUS_REFRESH_CHUNKS = Counter(
+    "nexus_corpus_refresh_chunks_total",
+    "Chunks affected by URL refresh operations.",
+    ("action",),
+)
 
 _tracing_configured = False
 _worker_metrics_started = False

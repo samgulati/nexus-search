@@ -62,6 +62,54 @@ class IndexService:
         return added, skipped
 
 
+    def replace_url(
+        self,
+        url: str,
+        items: list[DocumentIn],
+    ) -> tuple[int, int, int, bool]:
+        """Atomically replace one URL's in-memory chunks and rebuild once.
+
+        The caller must only invoke this after a successful fetch/extraction with
+        at least one valid chunk. If the effective chunk set and metadata are
+        unchanged, no mutation or rebuild is performed.
+        """
+        if not url or not items:
+            raise ValueError("replace_url requires a URL and at least one document")
+        if any((item.url or "") != url for item in items):
+            raise ValueError("all replacement documents must belong to the same URL")
+
+        with self._lock:
+            old_docs = [doc for doc in self.documents.values() if (doc.url or "") == url]
+            old_signature = {
+                (doc.content_hash, doc.title.strip(), doc.source)
+                for doc in old_docs
+            }
+            incoming_signature = {
+                (self._hash(item.text), item.title.strip(), item.source)
+                for item in items
+            }
+
+            if old_signature == incoming_signature and len(old_signature) == len(incoming_signature):
+                return 0, len(items), 0, True
+
+            for doc in old_docs:
+                self.documents.pop(doc.id, None)
+                self.content_hashes.discard(doc.content_hash)
+
+            added = 0
+            skipped = 0
+            for item in items:
+                _doc, created = self.add_document(item, rebuild=False)
+                if created:
+                    added += 1
+                else:
+                    skipped += 1
+
+            if old_docs or added:
+                self.rebuild()
+
+            return added, skipped, len(old_docs), False
+
     def restore_documents(self, docs: list[Document]) -> int:
         """Replace the in-memory corpus from durable storage and rebuild indexes once."""
         with self._lock:
