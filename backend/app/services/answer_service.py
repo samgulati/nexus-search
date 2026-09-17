@@ -133,8 +133,20 @@ class AnswerService:
             limit=result_limit,
         )
         supported_results = self._prune_to_supported_results(query, relevant_results)
+        definition_filtered_results = self._prune_definition_results(
+            query,
+            supported_results,
+        )
+        definition_support_missing = (
+            self._is_definition_query(query)
+            and bool(supported_results)
+            and not definition_filtered_results
+        )
         search = search.model_copy(
-            update={"results": supported_results, "total": len(supported_results)}
+            update={
+                "results": definition_filtered_results,
+                "total": len(definition_filtered_results),
+            }
         )
 
         citations = [
@@ -147,6 +159,12 @@ class AnswerService:
             search,
             candidate_count=candidate_count,
             relevant_candidate_count=len(relevant_results),
+            answerability_failure_reason=(
+                "Retrieved passages mention the requested concept, but none directly define "
+                "or explain it well enough to answer a definition query."
+                if definition_support_missing
+                else None
+            ),
         )
 
         if not search.results or evidence.decision == "abstain":
@@ -281,6 +299,104 @@ class AnswerService:
     def _is_judgment_query(cls, query: str) -> bool:
         terms = set(re.findall(r"[a-z0-9-]+", query.lower()))
         return bool(terms & JUDGMENT_TERMS)
+
+    @staticmethod
+    def _definition_subject_terms(query: str) -> set[str]:
+        lowered = query.strip().lower().rstrip("?.!")
+        subject = ""
+
+        match = re.match(r"^what\s+is\s+(.+)$", lowered)
+        if match:
+            subject = match.group(1)
+            # "What is idempotency in distributed systems?" -> "idempotency"
+            subject = re.split(r"\s+(?:in|for|within|inside|on)\s+", subject, maxsplit=1)[0]
+        else:
+            match = re.match(r"^what\s+does\s+(.+?)\s+mean$", lowered)
+            if match:
+                subject = match.group(1)
+            else:
+                match = re.match(r"^define\s+(.+)$", lowered)
+                if match:
+                    subject = match.group(1)
+
+        if not subject:
+            return set()
+
+        terms = set(re.findall(r"[a-z0-9][a-z0-9_+.#-]*", subject))
+        return {
+            term.strip("._+#-")
+            for term in terms
+            if len(term.strip("._+#-")) > 1
+            and term.strip("._+#-") not in QUERY_STOPWORDS
+        }
+
+    @classmethod
+    def _is_definition_query(cls, query: str) -> bool:
+        return bool(cls._definition_subject_terms(query))
+
+    @classmethod
+    def _sentence_defines_subject(cls, query: str, sentence: str) -> bool:
+        subject_terms = cls._definition_subject_terms(query)
+        if not subject_terms:
+            return True
+
+        lowered = sentence.lower()
+        normalized_terms = {
+            token.strip("._+#-")
+            for token in re.findall(r"[a-z0-9][a-z0-9_+.#-]*", lowered)
+            if token.strip("._+#-")
+        }
+
+        matched_subject_terms = subject_terms & normalized_terms
+        subject_coverage = len(matched_subject_terms) / len(subject_terms)
+
+        identifier_terms = {
+            term for term in subject_terms
+            if any(ch.isdigit() for ch in term) or "-" in term
+        }
+
+        # For identifier-heavy concepts such as "HTTP 503 Service Unavailable",
+        # exact identifier presence plus a meaningful fraction of the subject is
+        # enough. Requiring every descriptive word would reject valid wording
+        # such as "HTTP 503 means..." or "HTTP 503 indicates...".
+        if identifier_terms:
+            if not identifier_terms <= normalized_terms:
+                return False
+            if subject_coverage < 0.40:
+                return False
+        elif subject_coverage < 0.60:
+            return False
+
+        # Require actual definitional/explanatory language so a passage that
+        # merely mentions the concept (for example, "requires idempotency")
+        # cannot answer a "What is X?" query.
+        markers = (
+            r"\bmeans?\b",
+            r"\brefers?\s+to\b",
+            r"\bdefined\s+as\b",
+            r"\bindicates?\s+(?:that\s+)?\b",
+            r"\bdescribes?\b",
+            r"\bis\s+(?:an?|the|a\s+property|the\s+property|when|used\s+to)\b",
+            r"\bare\s+(?:an?|the)\b",
+            r"\boccurs?\s+when\b",
+        )
+        return any(re.search(marker, lowered) for marker in markers)
+
+    @classmethod
+    def _prune_definition_results(cls, query: str, results):
+        if not cls._is_definition_query(query):
+            return list(results)
+
+        selected = []
+        for result in results:
+            sentences = SENTENCE_RE.split((result.snippet or "").replace("…", " "))
+            if any(
+                len(sentence.strip()) >= 20
+                and cls._sentence_defines_subject(query, sentence.strip())
+                for sentence in sentences
+            ):
+                selected.append(result)
+        return selected
 
     @classmethod
     def _sentence_support_score(cls, query: str, result, sentence: str) -> float:
@@ -506,6 +622,7 @@ class AnswerService:
         *,
         candidate_count: int | None = None,
         relevant_candidate_count: int | None = None,
+        answerability_failure_reason: str | None = None,
     ) -> EvidenceSummary:
         candidate_count = len(search.results) if candidate_count is None else candidate_count
         relevant_candidate_count = (
@@ -516,7 +633,9 @@ class AnswerService:
         discarded = max(0, candidate_count - len(search.results))
 
         if not search.results:
-            if relevant_candidate_count > 0:
+            if answerability_failure_reason:
+                reason = answerability_failure_reason
+            elif relevant_candidate_count > 0:
                 reason = (
                     "Retrieved results matched the query, but none contained enough "
                     "claim-level support to answer safely."
@@ -591,6 +710,11 @@ class AnswerService:
             reasons.append("Retrieved evidence has weak direct query relevance.")
         if authority < 0.60:
             reasons.append("Sources are not sufficiently authoritative for this specific query.")
+        weak_relevance_and_authority = relevance < 0.35 and authority < 0.60
+        if weak_relevance_and_authority:
+            reasons.append(
+                "Direct relevance and topical authority are both too weak to support generation."
+            )
         if independent_sources < 2 and not strong_single_source_factual:
             reasons.append("Evidence comes from fewer than two independent relevant sources.")
         if conflict_detected:
@@ -611,6 +735,7 @@ class AnswerService:
             or coverage < 0.30
             or relevance < 0.22
             or confidence < 0.48
+            or weak_relevance_and_authority
         ):
             decision = "abstain"
         elif conflict_detected:
