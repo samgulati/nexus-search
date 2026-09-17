@@ -106,6 +106,16 @@ TRADEOFF_TERMS = {
     "duplicate", "duplicates", "idempotent", "idempotency",
 }
 
+NEGATION_TERMS = {
+    "not", "no", "never", "none", "cannot", "can't", "cant", "doesn't", "doesnt",
+    "isn't", "isnt", "won't", "wont", "without", "avoid", "avoids", "unsupported",
+    "deprecated", "disabled", "false", "incorrect",
+}
+CLAIM_STOPWORDS = QUERY_STOPWORDS | {
+    "means", "mean", "using", "used", "also", "may", "might", "could", "would",
+    "server", "system", "systems", "service", "services",
+}
+
 
 class AnswerService:
     async def answer_from_search(
@@ -173,10 +183,16 @@ class AnswerService:
 
         generation_ms = (time.perf_counter() - t0) * 1000
         if evidence.decision == "answer_with_caveat":
-            answer = (
-                "Evidence is partial, so treat this answer as qualified rather than complete. "
-                + answer
-            )
+            if evidence.conflict_detected:
+                answer = (
+                    "Relevant sources contain potentially conflicting claims, so treat this "
+                    "answer as qualified rather than definitive. " + answer
+                )
+            else:
+                answer = (
+                    "Evidence is partial, so treat this answer as qualified rather than complete. "
+                    + answer
+                )
 
         return AskResponse(
             query=query,
@@ -325,6 +341,118 @@ class AnswerService:
                 supported_results.append(result)
         return supported_results
 
+    @classmethod
+    def _claim_tokens(cls, query: str, sentence: str) -> set[str]:
+        query_terms = cls._query_terms(query)
+
+        # The general Nexus tokenizer intentionally permits characters such as
+        # ".", "#", "+", "_" and "-" because they are useful inside technical
+        # identifiers. For claim comparison, however, trailing punctuation must
+        # not turn "charges" and "charges." into different tokens.
+        raw_tokens = re.findall(r"[a-z0-9][a-z0-9_+.#-]*", sentence.lower())
+        tokens = {
+            token.strip("._+#-")
+            for token in raw_tokens
+            if token.strip("._+#-")
+        }
+
+        return {
+            token for token in tokens
+            if len(token) > 2
+            and token not in CLAIM_STOPWORDS
+            and token not in query_terms
+            and token not in NEGATION_TERMS
+        }
+
+    @classmethod
+    def _sentence_polarity(cls, query: str, sentence: str) -> int:
+        # Detect negation of the query's focal claim, not any negation anywhere
+        # in the sentence. Example:
+        #   "exactly-once is required when duplicates cannot be tolerated"
+        # supports "required" even though "cannot" appears later.
+        tokens = re.findall(r"[a-z0-9][a-z0-9_+.#'-]*", sentence.lower())
+        query_terms = cls._query_terms(query)
+
+        for idx, token in enumerate(tokens):
+            if token not in query_terms:
+                continue
+            window = tokens[max(0, idx - 3):idx]
+            if any(term in NEGATION_TERMS for term in window):
+                return -1
+
+        return 1
+
+    @staticmethod
+    def _jaccard(left: set[str], right: set[str]) -> float:
+        if not left or not right:
+            return 0.0
+        return len(left & right) / len(left | right)
+
+    @classmethod
+    def _claims_comparable(
+        cls,
+        left_tokens: set[str],
+        right_tokens: set[str],
+    ) -> bool:
+        if not left_tokens or not right_tokens:
+            return False
+
+        shared = left_tokens & right_tokens
+        if len(shared) >= 2:
+            return True
+
+        return cls._jaccard(left_tokens, right_tokens) >= 0.18
+
+    @classmethod
+    def _agreement_summary(cls, query: str, results) -> tuple[str, bool, int, int]:
+        if not results:
+            return "insufficient", False, 0, 0
+        if len(results) == 1:
+            return "single_source", False, 1, 0
+
+        claims: list[tuple[set[str], int]] = []
+        for result in results:
+            supported = cls._supporting_sentences(query, result)
+            if not supported:
+                continue
+            sentence = supported[0][1]
+            claims.append((
+                cls._claim_tokens(query, sentence),
+                cls._sentence_polarity(query, sentence),
+            ))
+
+        if len(claims) < 2:
+            return "insufficient", False, len(claims), 0
+
+        comparable_pairs = 0
+        conflicting_pairs = 0
+        aligned_indexes: set[int] = set()
+        conflict_indexes: set[int] = set()
+
+        for i in range(len(claims)):
+            for j in range(i + 1, len(claims)):
+                left_tokens, left_polarity = claims[i]
+                right_tokens, right_polarity = claims[j]
+                if not cls._claims_comparable(left_tokens, right_tokens):
+                    continue
+                comparable_pairs += 1
+                if left_polarity != right_polarity:
+                    conflicting_pairs += 1
+                    conflict_indexes.update({i, j})
+                else:
+                    aligned_indexes.update({i, j})
+
+        if comparable_pairs == 0:
+            return "mixed", False, len(claims), 0
+
+        if conflicting_pairs > 0:
+            conflicting_sources = len(conflict_indexes)
+            supporting_sources = max(0, len(claims) - conflicting_sources)
+            return "mixed", True, supporting_sources, conflicting_sources
+
+        supporting_sources = len(aligned_indexes) if aligned_indexes else len(claims)
+        return "agreement", False, supporting_sources, 0
+
     @staticmethod
     def _source_host(result) -> str:
         from urllib.parse import urlparse
@@ -405,6 +533,10 @@ class AnswerService:
                 independent_sources=0,
                 relevant_evidence_count=0,
                 discarded_results=discarded,
+                agreement="insufficient",
+                conflict_detected=False,
+                supporting_sources=0,
+                conflicting_sources=0,
                 reasons=[reason],
             )
 
@@ -432,6 +564,9 @@ class AnswerService:
 
         source_strength = min(independent_sources, 3) / 3.0
         evidence_depth = min(len(search.results), 3) / 3.0
+        agreement, conflict_detected, supporting_sources, conflicting_sources = (
+            cls._agreement_summary(query, search.results)
+        )
         confidence = (
             0.38 * coverage
             + 0.27 * relevance
@@ -458,6 +593,16 @@ class AnswerService:
             reasons.append("Sources are not sufficiently authoritative for this specific query.")
         if independent_sources < 2 and not strong_single_source_factual:
             reasons.append("Evidence comes from fewer than two independent relevant sources.")
+        if conflict_detected:
+            reasons.append(
+                "Potentially conflicting claims were detected across comparable relevant sources."
+            )
+        elif agreement == "agreement":
+            reasons.append("Comparable relevant sources provide mutually consistent support.")
+        elif agreement == "mixed":
+            reasons.append(
+                "Relevant sources discuss different aspects, so cross-source agreement is limited."
+            )
         if discarded:
             reasons.append(f"Discarded {discarded} weak or lower-ranked retrieval candidates.")
 
@@ -468,6 +613,8 @@ class AnswerService:
             or confidence < 0.48
         ):
             decision = "abstain"
+        elif conflict_detected:
+            decision = "answer_with_caveat"
         elif strong_single_source_factual:
             decision = "answer"
         elif (
@@ -494,6 +641,10 @@ class AnswerService:
             independent_sources=independent_sources,
             relevant_evidence_count=len(search.results),
             discarded_results=discarded,
+            agreement=agreement,
+            conflict_detected=conflict_detected,
+            supporting_sources=supporting_sources,
+            conflicting_sources=conflicting_sources,
             reasons=reasons,
         )
 

@@ -79,6 +79,10 @@ class EvidenceSummary(BaseModel):
     independent_sources: int = Field(ge=0)
     relevant_evidence_count: int = Field(default=0, ge=0)
     discarded_results: int = Field(default=0, ge=0)
+    agreement: Literal["single_source", "agreement", "mixed", "insufficient"] = "insufficient"
+    conflict_detected: bool = False
+    supporting_sources: int = Field(default=0, ge=0)
+    conflicting_sources: int = Field(default=0, ge=0)
     reasons: list[str] = Field(default_factory=list)
 
 
