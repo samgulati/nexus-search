@@ -136,6 +136,7 @@ class AnswerService:
             query,
             search,
             candidate_count=candidate_count,
+            relevant_candidate_count=len(relevant_results),
         )
 
         if not search.results or evidence.decision == "abstain":
@@ -376,11 +377,25 @@ class AnswerService:
         search: SearchResponse,
         *,
         candidate_count: int | None = None,
+        relevant_candidate_count: int | None = None,
     ) -> EvidenceSummary:
         candidate_count = len(search.results) if candidate_count is None else candidate_count
+        relevant_candidate_count = (
+            len(search.results)
+            if relevant_candidate_count is None
+            else relevant_candidate_count
+        )
         discarded = max(0, candidate_count - len(search.results))
 
         if not search.results:
+            if relevant_candidate_count > 0:
+                reason = (
+                    "Retrieved results matched the query, but none contained enough "
+                    "claim-level support to answer safely."
+                )
+            else:
+                reason = "No retrieved result passed the minimum query-relevance threshold."
+
             return EvidenceSummary(
                 decision="abstain",
                 confidence=0.0,
@@ -390,7 +405,7 @@ class AnswerService:
                 independent_sources=0,
                 relevant_evidence_count=0,
                 discarded_results=discarded,
-                reasons=["No retrieved result passed the minimum query-relevance threshold."],
+                reasons=[reason],
             )
 
         query_terms = cls._query_terms(query)
@@ -426,6 +441,14 @@ class AnswerService:
         )
         confidence = max(0.0, min(confidence, 1.0))
 
+        strong_single_source_factual = (
+            not cls._is_judgment_query(query)
+            and len(search.results) == 1
+            and coverage >= 0.85
+            and relevance >= 0.80
+            and authority >= 0.90
+        )
+
         reasons: list[str] = []
         if coverage < 0.50:
             reasons.append("Relevant passages cover too little of the query.")
@@ -433,7 +456,7 @@ class AnswerService:
             reasons.append("Retrieved evidence has weak direct query relevance.")
         if authority < 0.60:
             reasons.append("Sources are not sufficiently authoritative for this specific query.")
-        if independent_sources < 2:
+        if independent_sources < 2 and not strong_single_source_factual:
             reasons.append("Evidence comes from fewer than two independent relevant sources.")
         if discarded:
             reasons.append(f"Discarded {discarded} weak or lower-ranked retrieval candidates.")
@@ -445,6 +468,8 @@ class AnswerService:
             or confidence < 0.48
         ):
             decision = "abstain"
+        elif strong_single_source_factual:
+            decision = "answer"
         elif (
             confidence < 0.76
             or coverage < 0.70
