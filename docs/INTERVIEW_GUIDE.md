@@ -4,7 +4,7 @@ Use this document to explain Nexus accurately in an SDE-2 / backend / distribute
 
 ## 1. 30-second summary
 
-Nexus is a distributed hybrid-search engine I built from first principles. Each shard maintains lexical and semantic retrieval structures, the coordinator fans queries out concurrently and merges ranked lists using reciprocal-rank fusion, documents are placed with rendezvous hashing, and shard state can be backed by PostgreSQL. I added Kafka/Redpanda asynchronous indexing with retries and DLQ handling, OpenTelemetry/metrics, circuit breakers, bounded fan-out, request admission control, liveness/readiness separation, and Kubernetes deployment/failure tests.
+Nexus is a distributed, evidence-aware technical search engine I built from first principles. Each shard maintains lexical and semantic retrieval structures, the coordinator fans queries out concurrently and merges rankings with reciprocal-rank fusion, and an evidence layer separately decides whether retrieved support is relevant, authoritative and sufficient enough to answer. I added deterministic abstention/qualification, explainable adaptive retrieval from live system state, PostgreSQL-backed shard recovery, Kafka/Redpanda asynchronous indexing, resilience controls, observability, and Kubernetes failure tests.
 
 ## 2. 2-minute architecture explanation
 
@@ -214,3 +214,41 @@ Be able to answer these without looking at the code:
 13. What does the p95 benchmark include?
 14. Why did throughput get worse at concurrency 80?
 15. How would you add shard replicas without duplicating search results?
+
+## 21. What makes Nexus different from ordinary RAG?
+
+A common RAG flow is:
+
+```text
+retrieve top-k -> prompt -> generate
+```
+
+Nexus adds explicit decision stages:
+
+```text
+retrieve
+-> relevance reranking
+-> exact identifier grounding where needed
+-> sentence-level claim support
+-> intent-aware answerability
+-> authority / coverage / source-diversity checks
+-> heuristic agreement/conflict checks
+-> answer / qualify / abstain
+```
+
+The fake Redis `PERMASTORE` case is the clearest example: Redis persistence documentation is topically related, but it is not evidence that the command exists.
+
+## 22. Quality result to explain
+
+The frozen Phase 12.6 production benchmark contains 40 queries across definitions, procedures, identifiers, judgment/tradeoff prompts, multi-source questions, out-of-domain prompts, ambiguous prompts, adversarial prompts and regressions.
+
+```text
+behavioral-policy pass           100.0%
+authoritative-domain coverage@20 100.0%
+MRR                                0.5357
+Recall@5                           0.5000
+domain-proxy nDCG@5                0.5081
+```
+
+Caveat: ranking metrics use domain-level relevance proxies in v1, and behavioral pass is a policy check rather than factual accuracy.
+

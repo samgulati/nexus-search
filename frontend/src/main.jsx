@@ -1,8 +1,9 @@
 import React, { useEffect, useMemo, useState } from 'react'
 import { createRoot } from 'react-dom/client'
 import {
-  Activity, ArrowUpRight, BookOpen, Bot, Braces, Database, Gauge,
-  Search, ShieldCheck, Sparkles, Timer, Waypoints, Zap
+  Activity, AlertTriangle, ArrowUpRight, BookOpen, Bot, Braces,
+  CheckCircle2, Database, Gauge, Search, ShieldCheck, Sparkles, Timer,
+  Waypoints, Zap
 } from 'lucide-react'
 import './styles.css'
 
@@ -178,6 +179,7 @@ function App() {
                     </a>
                   ))}
                 </div>
+                {answer?.evidence && <EvidenceInspector evidence={answer.evidence} />}
               </>}
             </div>
 
@@ -236,6 +238,58 @@ function App() {
         <span>Nexus Search Engine</span>
         <span>FastAPI · React · Kafka · PostgreSQL · OpenTelemetry · Kubernetes</span>
       </footer>
+    </div>
+  )
+}
+
+function EvidenceInspector({ evidence }) {
+  const decision = evidence.decision || 'abstain'
+  const isAbstain = decision === 'abstain'
+  const isCaveat = decision === 'answer_with_caveat'
+
+  return (
+    <div className="evidence-inspector">
+      <div className="evidence-head">
+        <div>
+          <div className="evidence-kicker"><ShieldCheck size={13}/> Evidence Inspector</div>
+          <strong>Why Nexus {isAbstain ? 'abstained' : 'answered'}</strong>
+        </div>
+        <div className={`evidence-decision decision-${decision}`}>
+          {isAbstain ? <AlertTriangle size={13}/> : <CheckCircle2 size={13}/>}
+          {decision.replaceAll('_', ' ')}
+        </div>
+      </div>
+
+      <div className="evidence-grid">
+        <EvidenceMetric label="Confidence" value={pct(evidence.confidence)} />
+        <EvidenceMetric label="Coverage" value={pct(evidence.coverage)} />
+        <EvidenceMetric label="Relevance" value={pct(evidence.relevance)} />
+        <EvidenceMetric label="Authority" value={pct(evidence.authority)} />
+        <EvidenceMetric label="Sources" value={evidence.independent_sources} />
+        <EvidenceMetric label="Evidence kept" value={evidence.relevant_evidence_count} />
+        <EvidenceMetric label="Discarded" value={evidence.discarded_results} />
+        <EvidenceMetric
+          label="Agreement"
+          value={evidence.conflict_detected ? 'potential conflict' : evidence.agreement}
+          warn={evidence.conflict_detected || isCaveat}
+        />
+      </div>
+
+      <div className="evidence-reasons">
+        <span>Evidence trace</span>
+        <ul>
+          {(evidence.reasons || []).map((reason, i) => <li key={i}>{reason}</li>)}
+        </ul>
+      </div>
+    </div>
+  )
+}
+
+function EvidenceMetric({ label, value, warn = false }) {
+  return (
+    <div className={`evidence-metric ${warn ? 'warn' : ''}`}>
+      <span>{label}</span>
+      <strong>{value ?? '—'}</strong>
     </div>
   )
 }

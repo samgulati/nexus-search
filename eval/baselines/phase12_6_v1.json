@@ -1,0 +1,17 @@
+{
+  "id": "phase12_6_v1",
+  "benchmark": "technical_search_v1",
+  "queries": 40,
+  "environment": "Railway production",
+  "behavior_pass_rate": 1.0,
+  "authoritative_domain_coverage_at_20": 1.0,
+  "mean_first_authoritative_rank": 1.643,
+  "mrr": 0.5357,
+  "recall_at_5": 0.5,
+  "ndcg_at_5": 0.5081,
+  "notes": [
+    "Behavior checks are policy checks, not generalized search accuracy.",
+    "MRR, Recall@5 and nDCG@5 use domain-level relevance proxies in the v1 benchmark.",
+    "Metrics are specific to the checked-in 40-query benchmark and tested production deployment."
+  ]
+}

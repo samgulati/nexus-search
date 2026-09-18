@@ -205,6 +205,24 @@ PYTHONPATH=backend python3 scripts/benchmark_http.py \
   --output benchmark-results.json
 ```
 
+## Evidence-aware technical search
+
+Nexus does not automatically turn retrieval into generation. Its deterministic evidence layer evaluates direct relevance, query coverage, topical source authority, source diversity, sentence-level support, definition answerability, exact technical identifiers, and heuristic cross-source agreement/conflict.
+
+The UI includes an **Evidence Inspector** that exposes the final decision (`answer`, `answer_with_caveat`, or `abstain`) together with evidence scores and decision reasons.
+
+### Search-quality snapshot
+
+On the checked-in 40-query `technical_search_v1` production benchmark, the Phase 12.6 snapshot recorded:
+
+- **100% behavioral-policy pass**
+- **100% authoritative-domain coverage@20**
+- **0.5357 MRR**
+- **0.5000 Recall@5**
+- **0.5081 domain-proxy nDCG@5**
+
+These are benchmark-specific measurements, not generalized search accuracy. The ranking metrics use domain-level proxy labels in v1. See [`docs/QUALITY_SNAPSHOT.md`](docs/QUALITY_SNAPSHOT.md).
+
 ## Adaptive Search Autopilot
 
 Nexus can run public search requests with `mode=auto`. The controller chooses an execution plan from live system state rather than using one fixed retrieval path.
