@@ -247,3 +247,21 @@ footer { max-width:1180px;margin:auto;padding:24px;border-top:1px solid #ffffff0
   .evidence-reasons{grid-template-columns:1fr}
 }
 
+/* Phase 13.1 - accepted evidence vs raw candidates */
+.result.candidate-only { opacity:.68; }
+.result.candidate-only:hover { opacity:1; }
+.result.evidence-used {
+  background:linear-gradient(90deg,rgba(85,217,145,.045),transparent 55%);
+  box-shadow:inset 2px 0 0 rgba(85,217,145,.55);
+}
+.result-source { display:flex; align-items:center; gap:8px; flex-wrap:wrap; }
+.evidence-state {
+  border-radius:999px; padding:3px 6px;
+  font:8px 'DM Mono',monospace; letter-spacing:.04em;
+}
+.evidence-state.used {
+  color:#77dda6; border:1px solid #55d9913d; background:#55d9910d;
+}
+.evidence-state.filtered {
+  color:#657083; border:1px solid #ffffff0b; background:#ffffff05;
+}

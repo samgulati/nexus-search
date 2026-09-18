@@ -168,13 +168,21 @@ class AnswerService:
         )
 
         if not search.results or evidence.decision == "abstain":
-            return AskResponse(
-                query=query,
-                answer=(
+            if self._is_underspecified_query(query) and relevant_results:
+                abstain_answer = (
+                    "Nexus found related evidence, but the question is too underspecified "
+                    "for a reliable recommendation. Add the failure type, operation, or "
+                    "system context you are deciding about."
+                )
+            else:
+                abstain_answer = (
                     "No reliable evidence was found in Nexus's trusted sources. "
                     "Nexus does not generate unsupported answers. Try rephrasing the query "
                     "or search a broader source set."
-                ),
+                )
+            return AskResponse(
+                query=query,
+                answer=abstain_answer,
                 citations=citations if search.results else [],
                 retrieval_ms=search.took_ms,
                 generation_ms=0.0,
@@ -837,10 +845,9 @@ class AnswerService:
             decision = "answer"
 
         if cls._is_underspecified_query(query):
-            if decision == "answer":
-                decision = "answer_with_caveat"
+            decision = "abstain"
             reasons.append(
-                "The query is underspecified, so Nexus will not present a definitive recommendation without more context."
+                "The query is underspecified, so Nexus requires more context before making a recommendation."
             )
 
         if not reasons:

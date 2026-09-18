@@ -41,6 +41,10 @@ function App() {
     return map
   }, [answer])
 
+  const citedDocumentIds = useMemo(() => new Set(
+    (answer?.citations || []).map(c => c.document_id).filter(Boolean)
+  ), [answer])
+
   async function loadStats() {
     try {
       const r = await fetch('/api/stats')
@@ -186,15 +190,20 @@ function App() {
             <div className="results-panel">
               <div className="panel-title">
                 <Search size={18}/>
-                <span>Ranked evidence</span>
+                <span>Retrieval candidates</span>
                 <span className="pill">{results.length} results · {ms(lastSearchMs)}</span>
               </div>
-              {loading ? <Skeleton lines={7}/> : results.map((r, idx) => (
-                <article className="result" key={r.id}>
+              {loading ? <Skeleton lines={7}/> : results.map((r, idx) => {
+                const usedAsEvidence = citedDocumentIds.has(r.id)
+                return (
+                <article className={`result ${usedAsEvidence ? 'evidence-used' : 'candidate-only'}`} key={r.id}>
                   <div className="result-rank">{String(idx+1).padStart(2,'0')}</div>
                   <div className="result-main">
                     <div className="result-source">
-                      {r.source}{r.shard_id != null ? ` · shard ${r.shard_id}` : ''}
+                      <span>{r.source}{r.shard_id != null ? ` · shard ${r.shard_id}` : ''}</span>
+                      <span className={`evidence-state ${usedAsEvidence ? 'used' : 'filtered'}`}>
+                        {usedAsEvidence ? 'used as evidence' : 'candidate only'}
+                      </span>
                     </div>
                     <h3>
                       {r.url
@@ -209,7 +218,8 @@ function App() {
                     </div>
                   </div>
                 </article>
-              ))}
+                )
+              })}
             </div>
           </section>
         )}
