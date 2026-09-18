@@ -73,7 +73,12 @@ function App() {
         })
       ])
 
-      if (!searchRes.ok || !askRes.ok) throw new Error('Search request failed')
+      if (!searchRes.ok || !askRes.ok) {
+        const status = !searchRes.ok ? searchRes.status : askRes.status
+        if (status === 429) throw new Error('Nexus is receiving a lot of searches. Please wait a moment and try again.')
+        if (status === 503) throw new Error('Nexus is temporarily at capacity. Please retry in a few seconds.')
+        throw new Error('Search request failed. Please try again.')
+      }
 
       const searchData = await searchRes.json()
       const askData = await askRes.json()
@@ -99,14 +104,14 @@ function App() {
           <span>Nexus</span>
         </div>
         <div className="nav-meta">
-          <span><span className="live-dot"/> live demo</span>
+          <span><span className="live-dot"/> public · free · no sign-in</span>
           <a href="/docs" target="_blank">API docs <ArrowUpRight size={14}/></a>
         </div>
       </header>
 
       <main>
         <section className="hero">
-          <div className="eyebrow"><Sparkles size={14}/> adaptive distributed AI search</div>
+          <div className="eyebrow"><Sparkles size={14}/> free technical search · no account required</div>
           <h1>Search beyond keywords.<br/><span>Adapt under pressure.</span></h1>
           <p className="subhead">
             Nexus combines custom BM25, semantic retrieval, reciprocal-rank fusion and grounded answers —

@@ -35,6 +35,11 @@ class Settings:
     circuit_recovery_seconds: float = float(os.getenv("CIRCUIT_RECOVERY_SECONDS", "15"))
     max_inflight_requests: int = int(os.getenv("MAX_INFLIGHT_REQUESTS", "64"))
     min_ready_shards: int = int(os.getenv("MIN_READY_SHARDS", "1"))
+    public_rate_limit_enabled: bool = os.getenv("PUBLIC_RATE_LIMIT_ENABLED", "true").lower() in {"1", "true", "yes"}
+    public_rate_limit_burst: int = max(1, int(os.getenv("PUBLIC_RATE_LIMIT_BURST", "30")))
+    public_rate_limit_per_minute: int = max(1, int(os.getenv("PUBLIC_RATE_LIMIT_PER_MINUTE", "60")))
+    trust_proxy_headers: bool = os.getenv("TRUST_PROXY_HEADERS", "false").lower() in {"1", "true", "yes"}
+    public_generation_enabled: bool = os.getenv("PUBLIC_GENERATION_ENABLED", "false").lower() in {"1", "true", "yes"}
 
     # Adaptive Search Autopilot.
     autopilot_enabled: bool = os.getenv("AUTOPILOT_ENABLED", "true").lower() in {"1", "true", "yes"}

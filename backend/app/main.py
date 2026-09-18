@@ -28,6 +28,7 @@ from .observability import (
 )
 from .persistence import document_store
 from .resilience import CapacityGate
+from .public_guard import AnonymousTokenBucket, add_public_security_headers, anonymous_client_key
 from .queueing import index_queue
 from .models import (
     AskRequest,
@@ -103,6 +104,10 @@ app = FastAPI(
 
 origins = [o.strip() for o in settings.cors_origins.split(",") if o.strip()]
 request_gate = CapacityGate(settings.max_inflight_requests)
+public_limiter = AnonymousTokenBucket(
+    capacity=settings.public_rate_limit_burst,
+    refill_per_second=settings.public_rate_limit_per_minute / 60.0,
+)
 
 app.add_middleware(
     CORSMiddleware,
@@ -111,6 +116,27 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+
+@app.middleware("http")
+async def public_guard_middleware(request: Request, call_next):
+    path = request.url.path
+    if settings.public_rate_limit_enabled and path in {"/api/search", "/api/ask"}:
+        client_key = anonymous_client_key(request, settings.trust_proxy_headers)
+        allowed, retry_after = await public_limiter.allow(client_key)
+        if not allowed:
+            response = Response(
+                content='{"detail":"Too many anonymous searches. Please wait a moment and try again."}',
+                status_code=429,
+                media_type="application/json",
+                headers={"Retry-After": str(retry_after)},
+            )
+            add_public_security_headers(response, path)
+            return response
+
+    response = await call_next(request)
+    add_public_security_headers(response, path)
+    return response
 
 
 @app.middleware("http")
@@ -278,7 +304,7 @@ async def ask(request: AskRequest) -> AskResponse:
     return await answer_service.answer_from_search(
         request.query,
         search_response,
-        force_extractive=not plan.generation_allowed,
+        force_extractive=(not plan.generation_allowed) or (not settings.public_generation_enabled),
         result_limit=request.top_k,
     )
 

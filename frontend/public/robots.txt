@@ -1,0 +1,7 @@
+User-agent: *
+Allow: /
+Disallow: /api/
+Disallow: /internal/
+Disallow: /metrics
+
+Sitemap: https://nexus-search-production.up.railway.app/sitemap.xml

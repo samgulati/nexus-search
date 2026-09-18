@@ -13,6 +13,20 @@ The same application image can run as a standalone node, coordinator, or shard. 
 - **Project status / non-claims:** [`docs/PROJECT_STATUS.md`](docs/PROJECT_STATUS.md)
 - **Interview defense guide:** [`docs/INTERVIEW_GUIDE.md`](docs/INTERVIEW_GUIDE.md)
 
+## Public search mode
+
+Nexus is designed to be usable without accounts: open the site, type a query, and search.
+
+For a zero-paid-AI public deployment, set:
+
+```text
+PUBLIC_GENERATION_ENABLED=false
+SEMANTIC_PROVIDER=local
+PUBLIC_RATE_LIMIT_ENABLED=true
+```
+
+Anonymous search has a dependency-free application rate-limit backstop, while an edge CDN/WAF should remain the primary internet-facing abuse-control layer. See [`docs/PUBLIC_FREE_ARCHITECTURE.md`](docs/PUBLIC_FREE_ARCHITECTURE.md).
+
 ## Architecture
 
 ```mermaid
