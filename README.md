@@ -4,6 +4,15 @@ Nexus is a from-first-principles distributed search engine that combines a custo
 
 The same application image can run as a standalone node, coordinator, or shard. The distributed topology has been exercised both on Railway and in Kubernetes `kind` failure-recovery tests.
 
+## Quick demo and project package
+
+- **Live app:** `https://nexus-search-production.up.railway.app`
+- **Pitch + demo script:** [`docs/PITCH_AND_DEMO.md`](docs/PITCH_AND_DEMO.md)
+- **Architecture one-pager:** [`docs/ARCHITECTURE_ONE_PAGER.md`](docs/ARCHITECTURE_ONE_PAGER.md)
+- **Quality snapshot:** [`docs/QUALITY_SNAPSHOT.md`](docs/QUALITY_SNAPSHOT.md)
+- **Project status / non-claims:** [`docs/PROJECT_STATUS.md`](docs/PROJECT_STATUS.md)
+- **Interview defense guide:** [`docs/INTERVIEW_GUIDE.md`](docs/INTERVIEW_GUIDE.md)
+
 ## Architecture
 
 ```mermaid
