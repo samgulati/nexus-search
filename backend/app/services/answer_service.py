@@ -232,6 +232,41 @@ class AnswerService:
         matched = sum(1 for term in query_terms if term in lowered)
         return matched / len(query_terms)
 
+    @staticmethod
+    def _term_matches_token(term: str, tokens: set[str]) -> bool:
+        if term in tokens:
+            return True
+        if len(term) <= 3 or any(ch.isdigit() for ch in term) or "-" in term:
+            return False
+        variants = {term + "s", term + "es"}
+        if term.endswith("y") and len(term) > 3:
+            variants.add(term[:-1] + "ies")
+        return bool(variants & tokens)
+
+    @classmethod
+    def _token_coverage(cls, terms: set[str], text: str) -> float:
+        if not terms:
+            return 1.0
+        tokens = {
+            token.strip("._+#-")
+            for token in re.findall(r"[a-z0-9][a-z0-9_+.#-]*", text.lower())
+            if token.strip("._+#-")
+        }
+        return sum(cls._term_matches_token(term, tokens) for term in terms) / len(terms)
+
+    @classmethod
+    def _is_underspecified_query(cls, query: str) -> bool:
+        if cls._is_definition_query(query) or cls._explicit_identifier_terms(query):
+            return False
+        terms = cls._query_terms(query)
+        focal_terms = terms - JUDGMENT_TERMS
+        lowered = query.strip().lower()
+        judgment_shape = bool(re.match(
+            r"^(?:should\b|is\b|are\b|which\b|how\s+should\b|what\s+should\b)",
+            lowered,
+        ))
+        return judgment_shape and len(focal_terms) <= 1
+
     @classmethod
     def _result_relevance(cls, query: str, result) -> float:
         query_terms = cls._query_terms(query)
@@ -255,6 +290,15 @@ class AnswerService:
                 1 for term in identifier_terms if term in (result.title or "").lower()
             )
             relevance += 0.12 * (matched_identifiers / len(identifier_terms))
+
+        subject_terms = cls._definition_subject_terms(query)
+        if subject_terms:
+            subject_coverage = cls._token_coverage(
+                subject_terms,
+                f"{result.title or ''} {result.snippet or ''}",
+            )
+            if subject_coverage >= 0.60:
+                relevance = max(relevance, 0.46 + 0.28 * subject_coverage)
 
         return max(0.0, min(relevance, 1.0))
 
@@ -363,7 +407,10 @@ class AnswerService:
             if token.strip("._+#-")
         }
 
-        matched_subject_terms = subject_terms & normalized_terms
+        matched_subject_terms = {
+            term for term in subject_terms
+            if cls._term_matches_token(term, normalized_terms)
+        }
         subject_coverage = len(matched_subject_terms) / len(subject_terms)
 
         identifier_terms = {
@@ -392,6 +439,12 @@ class AnswerService:
             r"\bdefined\s+as\b",
             r"\bindicates?\s+(?:that\s+)?\b",
             r"\bdescribes?\b",
+            r"\brepresents?\b",
+            r"\bspecif(?:y|ies)\b",
+            r"\ballows?\b",
+            r"\blets?\b",
+            r"\benables?\b",
+            r"\breturns?\b",
             r"\bis\s+(?:an?|the|a\s+property|the\s+property|when|used\s+to)\b",
             r"\bare\s+(?:an?|the)\b",
             r"\boccurs?\s+when\b",
@@ -404,14 +457,27 @@ class AnswerService:
             return list(results)
 
         selected = []
+        subject_terms = cls._definition_subject_terms(query)
+        markers = (
+            r"\bmeans?\b", r"\brefers?\s+to\b", r"\bdefined\s+as\b",
+            r"\bindicates?\b", r"\bdescribes?\b", r"\brepresents?\b",
+            r"\bspecif(?:y|ies)\b", r"\ballows?\b", r"\blets?\b",
+            r"\benables?\b", r"\breturns?\b",
+            r"\bis\s+(?:an?|the|when|used\s+to)\b",
+            r"\bare\s+(?:an?|the)\b", r"\boccurs?\s+when\b",
+        )
         for result in results:
-            sentences = SENTENCE_RE.split((result.snippet or "").replace("…", " "))
-            if any(
-                len(sentence.strip()) >= 20
-                and cls._sentence_defines_subject(query, sentence.strip())
-                for sentence in sentences
-            ):
-                selected.append(result)
+            for sentence in SENTENCE_RE.split((result.snippet or "").replace("…", " ")):
+                clean = sentence.strip()
+                if len(clean) < 20:
+                    continue
+                if cls._sentence_defines_subject(query, clean):
+                    selected.append(result)
+                    break
+                combined = cls._token_coverage(subject_terms, f"{result.title or ''} {clean}")
+                if combined >= 0.75 and any(re.search(marker, clean.lower()) for marker in markers):
+                    selected.append(result)
+                    break
         return selected
 
     @classmethod
@@ -422,7 +488,10 @@ class AnswerService:
 
         lowered = sentence.lower()
         sentence_terms = set(re.findall(r"[a-z0-9][a-z0-9_+.#-]*", lowered))
-        matched = query_terms & sentence_terms
+        matched = {
+            term for term in query_terms
+            if cls._term_matches_token(term, sentence_terms)
+        }
         coverage = len(matched) / len(query_terms)
 
         identifier_terms = cls._explicit_identifier_terms(query)
@@ -435,6 +504,8 @@ class AnswerService:
         title_overlap = len(query_terms & title_terms) / len(query_terms)
 
         score = 0.65 * coverage + 0.20 * title_overlap + identifier_bonus
+        if cls._is_definition_query(query) and cls._sentence_defines_subject(query, sentence):
+            score = max(score, 0.34)
 
         if cls._is_judgment_query(query):
             tradeoff_hits = sentence_terms & TRADEOFF_TERMS
@@ -764,6 +835,13 @@ class AnswerService:
             decision = "answer_with_caveat"
         else:
             decision = "answer"
+
+        if cls._is_underspecified_query(query):
+            if decision == "answer":
+                decision = "answer_with_caveat"
+            reasons.append(
+                "The query is underspecified, so Nexus will not present a definitive recommendation without more context."
+            )
 
         if not reasons:
             reasons.append(

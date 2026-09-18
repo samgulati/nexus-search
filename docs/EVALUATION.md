@@ -111,3 +111,10 @@ python3 scripts/refresh_eval_sources.py \
 
 `ADMIN_TOKEN` must stay in the local environment and must never be pasted into
 logs, source control, or chat.
+
+## Phase 12.6: ambiguity and definition precision
+
+Phase 12.6 prevents context-poor recommendation prompts from becoming definitive
+answers and adds targeted plural/title-context handling for definition queries.
+Global evidence thresholds are unchanged, and mere mentions still do not count
+as definitions.
